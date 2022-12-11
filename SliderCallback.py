@@ -2,7 +2,7 @@ from flask import Flask, request, url_for, render_template_string, redirect
 
 slider_value = '50'  # start value
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="data")
 
 @app.route('/change', methods=['POST'])
 def change():
