@@ -23,27 +23,19 @@ USE_HEALTHLED
 */
 
 void setup_app();
-void handle_app();
+bool handle_app();
 
 #include <Arduino.h>
 
-#ifdef USE_SPIFFS
-#include <SPIFFS.h>
-FS &Fs = SPIFFS; 
-#endif
-#ifdef USE_LITTLEFS
-#include <LittleFS.h>
-FS &Fs = LittleFS; 
-#endif
 
 int slider_value = 50;
 
 
 // Config for ESP8266 or ESP32
 #if defined(ESP8266)
-    #define HEALTH_LED_ON LOW
-    #define HEALTH_LED_OFF HIGH
+    #define HEALTH_LED_INVERTED false
     #define HEALTH_LED_PIN LED_BUILTIN
+    #define HEALTH_LED_CHANNEL -1
     #define BUTTON_PIN 0
 
     // Web Updater
@@ -64,14 +56,13 @@ int slider_value = 50;
     WiFiUDP ntpUDP;
     NTPClient ntp(ntpUDP, NTP_SERVER);
 #elif defined(ESP32)
-    #define HEALTH_LED_ON HIGH
-    #define HEALTH_LED_OFF LOW
+    #define HEALTH_LED_INVERTED false
     #ifdef LED_BUILTIN
         #define HEALTH_LED_PIN LED_BUILTIN
     #else
         #define HEALTH_LED_PIN 16
     #endif
-    #define HEALTH_PWM_CH 0
+    #define HEALTH_LED_CHANNEL 0
     #define BUTTON_PIN 0
 
     // Web Updater
@@ -93,11 +84,20 @@ int slider_value = 50;
     #error "No ESP8266 or ESP32, define your rs485 stream, pins and includes here!"
 #endif
 
+// Health LED
+#include <Breathing.h>
+const uint32_t health_ok_interval = 5000;
+const uint32_t health_err_interval = 1000;
+Breathing health_led(health_ok_interval, HEALTH_LED_PIN, HEALTH_LED_INVERTED, HEALTH_LED_CHANNEL);
+bool enabledBreathing = true;  // global flag to switch breathing animation on or off
+
 // Infrastructure
-// #include <LittleFS.h>
 #include <EEPROM.h>
 #include <Syslog.h>
 #include <WiFiManager.h>
+#include <FileSys.h>
+
+FileSys fileSys;
 
 // Web status page and OTA updater
 #define WEBSERVER_PORT 80
@@ -115,53 +115,12 @@ time_t post_time = 0;
 WiFiClient wifiMqtt;
 PubSubClient mqtt(wifiMqtt);
 
-// Breathing status LED
-const uint32_t ok_interval = 5000;
-const uint32_t err_interval = 1000;
-
-uint32_t breathe_interval = ok_interval; // ms for one led breathe cycle
-bool enabledBreathing = true;  // global flag to switch breathing animation on or off
-
-#ifndef PWMRANGE
-#define PWMRANGE 1023
-#define PWMBITS 10
-#endif
-
 // Syslog
 WiFiUDP logUDP;
 Syslog syslog(logUDP, SYSLOG_PROTO_IETF);
 char msg[512];  // one buffer for all syslog and json messages
+
 char start_time[30];
-
-
-void setup_fs() {
-#ifdef USE_SPIFFS
-    if (!SPIFFS.begin(true))
-#else
-    if (!LittleFS.begin(true))
-#endif
-    {
-        Serial.println("LittleFS Mount Failed");
-    }
-    else {
-        File file = Fs.open("/hello.txt");
-        if (!file) {
-            Serial.println("Failed to open file for reading");
-        }
-        else {
-            if (file.isDirectory()) {
-                Serial.println("Cannot open directory");
-            }
-            else {
-                while (file.available()) {
-                    Serial.write(file.read());
-                }
-            }
-            file.close();
-        }
-    }
-    Serial.println("Setup FS done");
-}
 
 
 void slog(const char *message, uint16_t pri = LOG_INFO) {
@@ -278,7 +237,7 @@ void report_wifi( int8_t rssi, const byte *bssid ) {
 
 
 // check and report RSSI and BSSID changes
-void handle_wifi() {
+bool handle_wifi() {
     static byte prevBssid[6] = {0};
     static int8_t prevRssi = 0;
     static bool prevConnected = false;
@@ -315,7 +274,7 @@ void handle_wifi() {
             if (reconnectCount > reconnectLimit) {
                 Serial.println("Failed to reconnect WLAN, about to reset");
                 for (int i = 0; i < 20; i++) {
-                    digitalWrite(HEALTH_LED_PIN, (i & 1) ? HEALTH_LED_ON : HEALTH_LED_OFF);
+                    digitalWrite(HEALTH_LED_PIN, (i & 1) ? LOW : HIGH);
                     delay(100);
                 }
                 ESP.restart();
@@ -328,6 +287,8 @@ void handle_wifi() {
 
     prevRssi = currRssi;
     prevConnected = currConnected;
+
+    return currConnected;
 }
 
 
@@ -492,22 +453,15 @@ bool ip_config(uint32_t *ip, int num_ip, bool write = false) {
 // Define web pages for update, reset or for event infos
 void setup_webserver() {
     // css and js files
-    web_server.serveStatic("/bootstrap.min.css", Fs, "/bootstrap.min.css");
-    web_server.serveStatic("/bootstrap.bundle.min.js", Fs, "/bootstrap.bundle.min.js");
-    web_server.serveStatic("/jquery.min.js", Fs, "/jquery.min.js");
+    web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css");
+    web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js");
+    web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js");
 
     // change slider value
     web_server.on("/change", HTTP_POST, []() {
         uint16_t prio = LOG_INFO;
 
-        String arg = web_server.arg("slider");
-        if (!arg.isEmpty()) {
-            slider_value = arg.toInt();
-            snprintf(web_msg, sizeof(web_msg), "Slider value now '%d'", slider_value);
-            slog(web_msg, prio);
-        }
-
-        arg = web_server.arg("button");
+        String arg = web_server.arg("button");
         if (!arg.isEmpty()) {
             if (arg.equals("button-1")) {
                 snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed", arg.c_str());
@@ -515,6 +469,14 @@ void setup_webserver() {
             }
             else if (arg.equals("button-2")) {
                 snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed", arg.c_str());
+                slog(web_msg, prio);
+            }
+        }
+        else {
+            arg = web_server.arg("slider");
+            if (!arg.isEmpty()) {
+                slider_value = arg.toInt();
+                snprintf(web_msg, sizeof(web_msg), "Slider value now '%d'", slider_value);
                 slog(web_msg, prio);
             }
         }
@@ -697,46 +659,6 @@ bool check_ntptime() {
 }
 
 
-// Status led update
-void handle_breathe() {
-    static uint32_t start = 0;  // start of last breath
-    static uint32_t min_duty = 1;  // limit min brightness
-    static uint32_t max_duty = PWMRANGE / 2;  // limit max brightness
-    static uint32_t prev_duty = 0;
-
-    // map elapsed in breathing intervals
-    uint32_t now = millis();
-    uint32_t elapsed = now - start;
-    if (elapsed > breathe_interval) {
-        start = now;
-        elapsed -= breathe_interval;
-    }
-
-    // map min brightness to max brightness twice in one breathe interval
-    uint32_t duty = (max_duty - min_duty) * elapsed * 2 / breathe_interval + min_duty;
-    if (duty > max_duty) {
-        // second range: breathe out aka get darker
-        duty = 2 * max_duty - duty;
-    }
-
-    duty = duty * duty / max_duty;  // generally reduce lower brightness levels
-
-    if (duty != prev_duty) {
-        // adjust pwm duty cycle
-        prev_duty = duty;
-        if (HEALTH_LED_ON == LOW) {
-            // inverted
-            duty = PWMRANGE - duty;
-        }
-        #if defined(ESP32)
-            ledcWrite(HEALTH_PWM_CH, duty);
-        #else
-            analogWrite(HEALTH_LED_PIN, duty);
-        #endif
-    }
-}
-
-
 // Reset reason can be quite useful...
 // Messages from arduino core example
 void print_reset_reason(int core) {
@@ -787,38 +709,41 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 }
 
 
-void handle_mqtt( bool time_valid ) {
+bool handle_mqtt( bool time_valid ) {
     static const int32_t interval = 5000;  // if disconnected try reconnect this often in ms
     static uint32_t prev = -interval;      // first connect attempt without delay
 
     if (mqtt.connected()) {
         mqtt.loop();
+        return true;
     }
-    else {
-        uint32_t now = millis();
-        if (now - prev > interval) {
-            if (mqtt.connect(HOSTNAME, MQTT_TOPIC "/status/LWT", 0, true, "Offline")
-             && mqtt.publish(MQTT_TOPIC "/status/LWT", "Online", true)
-             && mqtt.publish(MQTT_TOPIC "/status/Hostname", HOSTNAME)
-             && mqtt.publish(MQTT_TOPIC "/status/DBServer", INFLUX_SERVER)
-             && mqtt.publish(MQTT_TOPIC "/status/DBPort", itoa(INFLUX_PORT, msg, 10))
-             && mqtt.publish(MQTT_TOPIC "/status/DBName", INFLUX_DB)
-             && mqtt.publish(MQTT_TOPIC "/status/Version", VERSION)
-             && (!time_valid || mqtt.publish(MQTT_TOPIC "/status/StartTime", start_time))
-             && mqtt.subscribe(MQTT_TOPIC "/cmd")) {
-                snprintf(msg, sizeof(msg), "Connected to MQTT broker %s:%d using topic %s", MQTT_SERVER, MQTT_PORT, MQTT_TOPIC);
-                slog(msg, LOG_NOTICE);
-            }
-            else {
-                int error = mqtt.state();
-                mqtt.disconnect();
-                snprintf(msg, sizeof(msg), "Connect to MQTT broker %s:%d failed with code %d", MQTT_SERVER, MQTT_PORT, error);
-                slog(msg, LOG_ERR);
-            }
-            prev = now;
+
+    uint32_t now = millis();
+    if (now - prev > interval) {
+        prev = now;
+
+        if (mqtt.connect(HOSTNAME, MQTT_TOPIC "/status/LWT", 0, true, "Offline")
+            && mqtt.publish(MQTT_TOPIC "/status/LWT", "Online", true)
+            && mqtt.publish(MQTT_TOPIC "/status/Hostname", HOSTNAME)
+            && mqtt.publish(MQTT_TOPIC "/status/DBServer", INFLUX_SERVER)
+            && mqtt.publish(MQTT_TOPIC "/status/DBPort", itoa(INFLUX_PORT, msg, 10))
+            && mqtt.publish(MQTT_TOPIC "/status/DBName", INFLUX_DB)
+            && mqtt.publish(MQTT_TOPIC "/status/Version", VERSION)
+            && (!time_valid || mqtt.publish(MQTT_TOPIC "/status/StartTime", start_time))
+            && mqtt.subscribe(MQTT_TOPIC "/cmd")) {
+            snprintf(msg, sizeof(msg), "Connected to MQTT broker %s:%d using topic %s", MQTT_SERVER, MQTT_PORT, MQTT_TOPIC);
+            slog(msg, LOG_NOTICE);
+            return true;
         }
+
+        int error = mqtt.state();
+        mqtt.disconnect();
+        snprintf(msg, sizeof(msg), "Connect to MQTT broker %s:%d failed with code %d", MQTT_SERVER, MQTT_PORT, error);
+        slog(msg, LOG_ERR);
     }
- }
+
+    return false;
+}
 
 
 // Startup
@@ -829,7 +754,7 @@ void setup() {
     WiFi.hostname(host.c_str());
 
     pinMode(HEALTH_LED_PIN, OUTPUT);
-    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_ON);
+    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
 
     Serial.begin(BAUDRATE);
     Serial.println("\nStarting " PROGNAME " v" VERSION " " __DATE__ " " __TIME__);
@@ -840,7 +765,7 @@ void setup() {
     syslog.appName("Joba1");
     syslog.defaultPriority(LOG_KERN);
 
-    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_OFF);
+    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? HIGH : LOW);
 
     WiFiManager wm;
     // wm.resetSettings();
@@ -852,7 +777,7 @@ void setup() {
     if (!wm.autoConnect(WiFi.getHostname(), WiFi.getHostname())) {
         Serial.println("Failed to connect WLAN, about to reset");
         for (int i = 0; i < 20; i++) {
-            digitalWrite(HEALTH_LED_PIN, (i & 1) ? HEALTH_LED_ON : HEALTH_LED_OFF);
+            digitalWrite(HEALTH_LED_PIN, (i & 1) ? HIGH : LOW);
             delay(100);
         }
         ESP.restart();
@@ -869,7 +794,7 @@ void setup() {
         }
     }
 
-    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_ON);
+    digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
     char msg[80];
     snprintf(msg, sizeof(msg), "%s Version %s, WLAN IP is %s", PROGNAME, VERSION,
         WiFi.localIP().toString().c_str());
@@ -883,28 +808,25 @@ void setup() {
 
     MDNS.begin(WiFi.getHostname());
 
-    setup_fs();
+    fileSys.begin();
+
     esp_updater.setup(&web_server);
     setup_webserver();
 
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(mqtt_callback);
 
-#if defined(ESP8266)
-    analogWriteRange(PWMRANGE);  // for health led breathing steps
-#elif defined(ESP32)
+#if defined(ESP32)
     print_reset_reason(0);
-    print_reset_reason(1);  // assume 2nd core (should I ask?)
-
-    ledcAttachPin(HEALTH_LED_PIN, HEALTH_PWM_CH);
-    ledcSetup(HEALTH_PWM_CH, 1000, PWMBITS);
-#else
-    analogWriteRange(PWMRANGE);  // for health led breathing steps
+    print_reset_reason(1);
 #endif
 
     pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
 
     setup_app();
+
+    health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
+    health_led.begin();
 
     slog("Setup done", LOG_NOTICE);
 }
@@ -913,21 +835,25 @@ void setup() {
 // Main loop
 void loop() {
     bool button_pressed;
+    bool health = true;
 
-    handle_app();
+    health &= handle_app();
     
     bool have_time = check_ntptime();
-    
-    if (have_time 
-     && enabledBreathing) {
-        breathe_interval = (influx_status < 200 || influx_status >= 300) ? err_interval : ok_interval;
-        handle_breathe();  // health indicator
-    }
+
+    health &= handle_mqtt(have_time);
+    health &= handle_wifi();
 
     if (handle_button(button_pressed)) {
         // do something
     }
+
     web_server.handleClient();
-    handle_mqtt(have_time);
-    handle_wifi();
+
+    health &= (influx_status >= 200 && influx_status < 300);
+
+    if (have_time && enabledBreathing) {
+        health_led.interval(health ? health_ok_interval : health_err_interval);
+        health_led.handle();
+    }
 }

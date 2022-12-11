@@ -2,6 +2,6 @@ void setup_app() {
 
 }
 
-void handle_app() {
-    
+bool handle_app() {
+    return true;
 }
