@@ -1,7 +1,9 @@
 // slider with server callbacks
 // slider id 'slider'
-// slider amount element 'sliderAmount'
-// 
+// slider amount element id 'sliderAmount'
+// slider form id 'form'
+// slider url receiving the slider position '/change'
+
 var slider = document.getElementById('slider');
 var sliderDiv = document.getElementById('sliderAmount');
 var sliderBusy = 0;
