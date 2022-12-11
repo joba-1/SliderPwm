@@ -365,35 +365,8 @@ const char *main_page() {
 
         "  <script src=\"jquery.min.js\"></script>\n"
         "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
+        "  <script src=\"slider.js\"></script>\n"
         " </body>\n"
-        " <script>\n"
-        "  var slider = document.getElementById('slider');\n"
-        "  var sliderDiv = document.getElementById('sliderAmount');\n"
-        "  var sliderBusy = 0;\n\n"
-        "  slider.oninput = function() {\n"
-        "   if (sliderBusy == 0) {\n"
-        "    sliderBusy = 1;\n"
-        "    sliderDiv.innerHTML = this.value;\n"
-        "    $.post({\n"
-        "     url: '/change',\n"
-        "     data: $('form').serialize(),\n"
-        "     success: function(response) { sliderBusy = 0; },\n"
-        "     error: function(error) { sliderBusy = 0; alert(error); console.log(error); }\n"
-        "    });\n"
-        "   }\n"
-        "  }\n\n"
-        "  slider.onchange = function() {\n"
-         "  if (sliderDiv.innerHTML != this.value) {\n"
-        "    sliderDiv.innerHTML = this.value;\n"
-        "    $.post({\n"
-        "     url: '/change',\n"
-        "     data: $('form').serialize(),\n"
-        "     success: function(response) { sliderBusy = 0; },\n"
-        "     error: function(error) { sliderBusy = 0; alert(error); console.log(error); }\n"
-        "    });\n"
-        "   }\n"
-        "  }\n"
-        " </script>\n"
         "</html>\n";
     static char page[sizeof(fmt) + 500] = "";
     static char curr_time[30], influx_time[30];
@@ -456,6 +429,7 @@ void setup_webserver() {
     web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css");
     web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js");
     web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js");
+    web_server.serveStatic("/slider.js", fileSys, "/slider.js");
 
     // change slider value
     web_server.on("/change", HTTP_POST, []() {
