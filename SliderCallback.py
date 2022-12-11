@@ -70,18 +70,31 @@ def root():
   <script>
     var slider = document.getElementById('slider');
     var sliderDiv = document.getElementById("sliderAmount");
+    var sliderBusy = 0;
 
     slider.oninput = function() {{
-      sliderDiv.innerHTML = this.value;
+      if (sliderBusy == 0) {{
+        sliderBusy = 1;
+        sliderDiv.innerHTML = this.value;
+        $.post({{
+          url: '/change',
+          data: $('form').serialize(),
+          success: function(response) {{ sliderBusy = 0; }},
+          error: function(error) {{ sliderBusy = 0; alert(response); console.log(error); }}
+        }});
+      }}
     }}
 
     slider.onchange = function() {{
-      $.post({{
-        url: '/change',
-        data: $('form').serialize(),
-        success: function(response) {{ console.log(response); }},
-        error: function(error) {{ alert(response); console.log(error); }}
-      }});
+      if (sliderDiv.innerHTML != this.value) {{
+        sliderDiv.innerHTML = this.value;
+        $.post({{
+          url: '/change',
+          data: $('form').serialize(),
+          success: function(response) {{ sliderBusy = 0; }},
+          error: function(error) {{ sliderBusy = 0; alert(response); console.log(error); }}
+        }});
+      }}
     }}
   </script>
 </html>''')
