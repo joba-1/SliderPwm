@@ -28,7 +28,8 @@ bool handle_app();
 #include <Arduino.h>
 
 
-int slider_value = 50;
+int slider1_value = 33;
+int slider2_value = 66;
 
 
 // Config for ESP8266 or ESP32
@@ -318,10 +319,18 @@ const char *main_page() {
         "    </div>\n"
         "    <div class=\"row\">\n"
         "     <div class=\"col-9\">\n"
-        "      <input style=\"width:100%%\" id=\"slider\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\" name=\"slider\">\n"
+        "      <input style=\"width:100%%\" id=\"slider1\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
         "     </div>\n"
         "     <div class=\"col-3\" >\n"
-        "      <div id=\"sliderAmount\">%d</div>\n"
+        "      <div id=\"sliderValue1\">%d</div>\n"
+        "     </div>\n"
+        "    </div>\n"
+        "    <div class=\"row\">\n"
+        "     <div class=\"col-9\">\n"
+        "      <input style=\"width:100%%\" id=\"slider2\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
+        "     </div>\n"
+        "     <div class=\"col-3\" >\n"
+        "      <div id=\"sliderValue2\">%d</div>\n"
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
@@ -366,6 +375,10 @@ const char *main_page() {
         "  <script src=\"jquery.min.js\"></script>\n"
         "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
         "  <script src=\"slider.js\"></script>\n"
+        "  <script>\n"
+        "   sliderCallback('slider1', 'sliderValue1', '/change');\n"
+        "   sliderCallback('slider2', 'sliderValue2', '/change');\n"
+        "  </script>\n"
         " </body>\n"
         "</html>\n";
     static char page[sizeof(fmt) + 500] = "";
@@ -378,7 +391,7 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, slider_value, slider_value, web_msg, start_time, curr_time, 
+    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, slider2_value, slider2_value, web_msg, start_time, curr_time, 
         influx_time, influx_status, lastBssid, lastRssi, WiFi.localIP().toString().c_str());
     *web_msg = '\0';
     return page;
@@ -447,11 +460,19 @@ void setup_webserver() {
             }
         }
         else {
-            arg = web_server.arg("slider");
+            arg = web_server.arg("slider1");
             if (!arg.isEmpty()) {
-                slider_value = arg.toInt();
-                snprintf(web_msg, sizeof(web_msg), "Slider value now '%d'", slider_value);
+                slider1_value = arg.toInt();
+                snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", slider1_value);
                 slog(web_msg, prio);
+            }
+            else {
+                arg = web_server.arg("slider2");
+                if (!arg.isEmpty()) {
+                    slider2_value = arg.toInt();
+                    snprintf(web_msg, sizeof(web_msg), "Slider 2 value now '%d'", slider2_value);
+                    slog(web_msg, prio);
+                }
             }
         }
 
