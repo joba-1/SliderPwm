@@ -93,7 +93,6 @@ Breathing health_led(health_ok_interval, HEALTH_LED_PIN, HEALTH_LED_INVERTED, HE
 bool enabledBreathing = true;  // global flag to switch breathing animation on or off
 
 // Infrastructure
-#include <EEPROM.h>
 #include <Syslog.h>
 #include <WiFiManager.h>
 #include <FileSys.h>
@@ -310,8 +309,8 @@ const char *main_page() {
         "  <title>" PROGNAME " v" VERSION "</title>\n"
         " </head>\n"
         " <body>\n"
-        "  <form action=\"/change\" method=\"post\" enctype=\"multipart/form-data\" id=\"form\">\n"
-        "   <div class=\"container\">\n"
+        "  <div class=\"container\">\n"
+        "   <form action=\"/change\" method=\"post\" enctype=\"multipart/form-data\" id=\"form\">\n"
         "    <div class=\"row\">\n"
         "     <div class=\"col-12\">\n"
         "      <h1>" PROGNAME " v" VERSION "</h1>\n"
@@ -341,10 +340,9 @@ const char *main_page() {
         "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-2\">TWO</button>\n"
         "     </div>\n"
         "    </div>\n"
-        "   </div>\n"
-        "  </form>\n"
-
-        "  <p><strong>%s</strong></p>\n"
+        "   </form>\n"
+        "   <div class=\"row\"><strong>%s</strong></div>\n"
+        "  </div>\n"
         "  <p><table>\n"
         "   <tr><td>Wifi</td><td><a href=\"/json/Wifi\">JSON</a></td></tr>\n"
         "   <tr><td></td></tr>\n"
@@ -354,10 +352,6 @@ const char *main_page() {
         "   <tr><td>Last influx update</td><td>%s</td></tr>\n"
         "   <tr><td>Influx status</td><td>%d</td></tr>\n"
         "   <tr><td>RSSI %s</td><td>%d</td></tr>\n"
-        "   <tr><form action=\"ip\" method=\"post\">\n"
-        "    <td>IP <input type=\"text\" id=\"ip\" name=\"ip\" value=\"%s\" /></td>\n"
-        "    <td><input type=\"submit\" name=\"change\" value=\"Change IP\" /></td>\n"
-        "   </form></tr>\n"
         "  </table></p>\n"
         "  <p><table><tr>\n"
         "   <td><form action=\"/\" method=\"get\">\n"
@@ -391,49 +385,11 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, slider2_value, slider2_value, web_msg, start_time, curr_time, 
-        influx_time, influx_status, lastBssid, lastRssi, WiFi.localIP().toString().c_str());
+    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, slider2_value, slider2_value, 
+        web_msg, start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi);
     *web_msg = '\0';
     return page;
 }
-
-
-// Read and write ip config
-bool ip_config(uint32_t *ip, int num_ip, bool write = false) {
-    const uint32_t magic = 0xdeadbeef;
-    size_t got_bytes = 0;
-    size_t want_bytes = sizeof(*ip) * num_ip;
-    if (*ip != 0xffffffff && EEPROM.begin(want_bytes + sizeof(uint32_t))) {
-        if (write) {
-            got_bytes = EEPROM.writeBytes(0, ip, want_bytes);
-            EEPROM.writeULong(want_bytes, magic);
-            EEPROM.commit();
-
-        }
-        else {
-            got_bytes = EEPROM.readBytes(0, ip, want_bytes);
-            if (EEPROM.readULong(want_bytes) != magic) {
-                got_bytes = 0;
-            }
-        }
-        EEPROM.end();
-    }
-    return got_bytes == want_bytes && *ip != 0xffffffff;
-}
-
-// bool ip_config(uint32_t *ip, int num_ip, bool write = false) {
-//     size_t got_bytes = 0;
-//     size_t want_bytes = sizeof(*ip) * num_ip;
-//     if (LittleFS.begin(write)) {
-//         File f = LittleFS.open("ip.cfg", write ? "w" : "r", write);
-//         if (f) {
-//             got_bytes = write ? f.write((uint8_t *)ip, want_bytes) : f.read((uint8_t *)ip, want_bytes);
-//             f.close();
-//         }
-//         LittleFS.end();
-//     }
-//     return got_bytes == want_bytes;
-// }
 
 
 // Define web pages for update, reset or for event infos
@@ -485,44 +441,6 @@ void setup_webserver() {
         web_server.send(200, "application/json", msg);
     });
 
-    // Change host part of ip, if ip&subnet == 0 -> dynamic
-    web_server.on("/ip", HTTP_POST, []() {
-        String strIp = web_server.arg("ip");
-        uint16_t prio = LOG_ERR;
-        if (ip.fromString(strIp)) {
-            uint32_t newIp = (uint32_t)ip;
-            uint32_t oldIp = (uint32_t)WiFi.localIP();
-            uint32_t subMask = (uint32_t)WiFi.subnetMask();
-            if (newIp) {
-                // make sure new ip is in the same subnet
-                uint32_t netIp = oldIp & (uint32_t)WiFi.subnetMask();
-                newIp = (newIp & ~subMask) | netIp;
-            }
-            if (newIp != oldIp) {
-                // don't accidentially use broadcast address
-                if ((newIp & ~subMask) != ~subMask) {
-                    changeIp = true;
-                    ip = newIp;
-                    snprintf(web_msg, sizeof(web_msg), "Change IP to '%s'", ip.toString().c_str());
-                    prio = LOG_WARNING;
-                }
-                else {
-                    snprintf(web_msg, sizeof(web_msg), "Broadcast address '%s' not possible", IPAddress(newIp).toString().c_str());
-                }
-            }
-            else {
-                snprintf(web_msg, sizeof(web_msg), "No IP change for '%s'", strIp.c_str());
-                prio = LOG_WARNING;
-            }
-        }
-        else {
-            snprintf(web_msg, sizeof(web_msg), "Invalid ip '%s'", strIp.c_str());
-        }
-        slog(web_msg, prio);
-
-        web_server.sendHeader("Location", "/", true);  
-        web_server.send(302, "text/plain", "");
-    });
 
     // Call this page to reset the ESP
     web_server.on("/reset", HTTP_POST, []() {
@@ -542,33 +460,6 @@ void setup_webserver() {
     // Index page
     web_server.on("/", []() { 
         web_server.send(200, "text/html", main_page());
-
-        if (changeIp) {
-            delay(200);  // let the send finish
-            bool ok = false;
-            if (ip != INADDR_NONE) {  // static
-                ok = WiFi.config(ip, WiFi.gatewayIP(), WiFi.subnetMask(), WiFi.dnsIP(0), WiFi.dnsIP(1));
-            }
-            else {  // dynamic
-                // How to decide if gw and dns was dhcp provided or static?
-                // Assuming it is fully dynamic with dhcp, so set to 0, not old values
-                ok = WiFi.config(0U, 0U, 0U);
-            }
-
-            snprintf(msg, sizeof(msg), "New IP config ip:%s, gw:%s, sn:%s, d0:%s, d1:%s", WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), 
-                WiFi.subnetMask().toString().c_str(), WiFi.dnsIP(0).toString().c_str(), WiFi.dnsIP(1).toString().c_str());
-            slog(msg, LOG_NOTICE);
-            if (ok) {
-                uint32_t ip[5] = { (uint32_t)WiFi.localIP(), (uint32_t)WiFi.gatewayIP(), (uint32_t)WiFi.subnetMask(), (uint32_t)WiFi.dnsIP(0), (uint32_t)WiFi.dnsIP(1) };
-                if (ip_config(ip, 5, true)) {
-                    slog("Wrote changed IP config");
-                }
-                else {
-                    slog("Write changed IP config failed");
-                }
-            }
-            changeIp = false;
-        }
     });
 
     // Toggle breathing status led if you dont like it or ota does not work
@@ -765,10 +656,6 @@ void setup() {
     WiFiManager wm;
     // wm.resetSettings();
     wm.setConfigPortalTimeout(180);
-    uint32_t ip[5] = {0};
-    if (ip_config(ip, 5) && ip[0]) {
-        wm.setSTAStaticIPConfig(IPAddress(ip[0]), IPAddress(ip[1]), IPAddress(ip[2]), IPAddress(ip[3]));
-    }
     if (!wm.autoConnect(WiFi.getHostname(), WiFi.getHostname())) {
         Serial.println("Failed to connect WLAN, about to reset");
         for (int i = 0; i < 20; i++) {
@@ -779,17 +666,9 @@ void setup() {
         while (true)
             ;
     }
-    uint32_t ip2[5] = { (uint32_t)WiFi.localIP(), (uint32_t)WiFi.gatewayIP(), (uint32_t)WiFi.subnetMask(), (uint32_t)WiFi.dnsIP(0), (uint32_t)WiFi.dnsIP(1) };
-    if (memcmp(ip, ip2, sizeof(ip))) {
-        if (ip_config(ip2, 5, true)) {
-            slog("Wrote IP config");
-        }
-        else {
-            slog("Write IP config failed");
-        }
-    }
 
     digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
+
     char msg[80];
     snprintf(msg, sizeof(msg), "%s Version %s, WLAN IP is %s", PROGNAME, VERSION,
         WiFi.localIP().toString().c_str());
