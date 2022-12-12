@@ -293,8 +293,6 @@ bool handle_wifi() {
 
 
 char web_msg[80] = "";  // main web page displays and then clears this
-bool changeIp = false;  // if true, ip changes after display of root url
-IPAddress ip;           // the ip to change to (use DHCP if 0)
 
 // Standard web page
 const char *main_page() {
