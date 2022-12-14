@@ -67,8 +67,7 @@ int slider2_value = 66;
     #define BUTTON_PIN 0
 
     // Web Updater
-    #include <HTTPUpdateServer.h>
-    #include <WebServer.h>
+    #include <ESPAsyncWebServer.h>
     #include <WiFi.h>
     #include <ESPmDNS.h>
     #include <WiFiClient.h>
@@ -102,8 +101,8 @@ FileSys fileSys;
 // Web status page and OTA updater
 #define WEBSERVER_PORT 80
 
-WebServer web_server(WEBSERVER_PORT);
-HTTPUpdateServer esp_updater;
+AsyncWebServer web_server(WEBSERVER_PORT);
+bool shouldReboot = false;  // after updates...
 
 // Post to InfluxDB
 int influx_status = 0;
@@ -315,31 +314,33 @@ const char *main_page() {
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
-        "     <div class=\"col-9\">\n"
+        "     <div class=\"col-11\">\n"
         "      <input style=\"width:100%%\" id=\"slider1\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
         "     </div>\n"
-        "     <div class=\"col-3\" >\n"
-        "      <div id=\"sliderValue1\">%d</div>\n"
+        "     <div class=\"col-1\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue1\">%d</div>\n"
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
-        "     <div class=\"col-9\">\n"
+        "     <div class=\"col-11\">\n"
         "      <input style=\"width:100%%\" id=\"slider2\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
         "     </div>\n"
-        "     <div class=\"col-3\" >\n"
-        "      <div id=\"sliderValue2\">%d</div>\n"
+        "     <div class=\"col-1\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue2\">%d</div>\n"
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
-        "     <div class=\"col-9\">\n"
+        "     <div class=\"col-2\" mr-auto>\n"
         "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-1\">ONE</button>\n"
         "     </div>\n"
-        "     <div class=\"col-3\">\n"
-        "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-2\">TWO</button>\n"
+        "     <div class=\"col-8\"></div>\n"
+        "     <div class=\"col-2\">\n"
+        "      <div class=\"float-end\">\n"
+        "       <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-2\">TWO</button>\n"
+        "      </div>\n"
         "     </div>\n"
         "    </div>\n"
         "   </form>\n"
-        "   <div class=\"row\"><strong>%s</strong></div>\n"
         "   <div class=\"accordion\" id=\"infos\">\n"
         "    <div class=\"accordion-item\">\n"
         "     <h2 class=\"accordion-header\" id=\"heading1\">\n"
@@ -350,60 +351,32 @@ const char *main_page() {
         "     <div id=\"infos1\" class=\"accordion-collapse collapse\" aria-labelledby=\"heading1\" data-bs-parent=\"#infos\">\n"
         "      <div class=\"accordion-body\">\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"wifi\">Wifi</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"wifi\">\n"
-        "         <a href=\"/json/Wifi\">JSON</a>\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"wifi\">Wifi</label></div>\n"
+        "        <div class=\"col\" id=\"wifi\"><a href=\"/json/Wifi\">JSON</a></div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"update\">Post firmware image to</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"update\">\n"
-        "         <a href=\"/update\">/update</a>\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"update\">Post firmware image to</label></div>\n"
+        "        <div class=\"col\" id=\"update\"><a href=\"/update\">/update</a></div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"start\">Last start time</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"start\">\n"
-        "         %s\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"start\">Last start time</label></div>\n"
+        "        <div class=\"col\" id=\"start\">%s</div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"web\">Last web update</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"web\">\n"
-        "         %s\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"web\">Last web update</label></div>\n"
+        "        <div class=\"col\" id=\"web\">%s</div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"influx\">Last influx update</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"influx\">\n"
-        "         %s\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"influx\">Last influx update</label></div>\n"
+        "        <div class=\"col\" id=\"influx\">%s</div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"status\">Influx status</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"status\">\n"
-        "         %d\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"status\">Influx status</label></div>\n"
+        "        <div class=\"col\" id=\"status\">%d</div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
-        "        <div class=\"col\">\n"
-        "         <label for=\"rssi\">RSSI %s</label>\n"
-        "        </div>\n"
-        "        <div class=\"col\" id=\"rssi\">\n"
-        "         %d\n"
-        "        </div>\n"
+        "        <div class=\"col\"><label for=\"rssi\">RSSI %s</label></div>\n"
+        "        <div class=\"col\" id=\"rssi\">%d</div>\n"
         "       </div>\n"
         "       <div class=\"row\">\n"
         "        <div class=\"col\">\n"
@@ -425,6 +398,12 @@ const char *main_page() {
         "      </div>\n"
         "     </div>\n"
         "    </div>\n"
+        "   </div>\n"
+        "   <div class=\"alert alert-primary alert-dismissible fade show\" role=\"alert\">\n"
+        "    <strong>Status</strong> %s\n"
+        "    <button type=\"button\" class=\"btn-close\" data-bs-dismiss=\"alert\" aria-label=\"Close\">\n"
+        "     <span aria-hidden=\"true\">&times;</span>\n"
+        "    </button>\n"
         "   </div>\n"
         "   <div class=\"row\"><small>... by <a href=\"https://github.com/joba-1\">Joachim Banzhaf</a>, " __DATE__ " " __TIME__ "</small></div>\n"
         "  </div>\n"
@@ -448,7 +427,7 @@ const char *main_page() {
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
     snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, slider2_value, slider2_value, 
-        web_msg, start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi);
+        start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi, web_msg);
     *web_msg = '\0';
     return page;
 }
@@ -457,16 +436,16 @@ const char *main_page() {
 // Define web pages for update, reset or for event infos
 void setup_webserver() {
     // css and js files
-    web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css");
-    web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js");
-    web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js");
-    web_server.serveStatic("/slider.js", fileSys, "/slider.js");
+    web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css").setCacheControl("max-age=600");
+    web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js").setCacheControl("max-age=600");
+    web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js").setCacheControl("max-age=600");
+    web_server.serveStatic("/slider.js", fileSys, "/slider.js").setCacheControl("max-age=600");
 
     // change slider value
-    web_server.on("/change", HTTP_POST, []() {
+    web_server.on("/change", HTTP_POST, [](AsyncWebServerRequest *request) {
         uint16_t prio = LOG_INFO;
 
-        String arg = web_server.arg("button");
+        String arg = request->arg("button");
         if (!arg.isEmpty()) {
             if (arg.equals("button-1")) {
                 snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed", arg.c_str());
@@ -478,14 +457,14 @@ void setup_webserver() {
             }
         }
         else {
-            arg = web_server.arg("slider1");
+            arg = request->arg("slider1");
             if (!arg.isEmpty()) {
                 slider1_value = arg.toInt();
                 snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", slider1_value);
                 slog(web_msg, prio);
             }
             else {
-                arg = web_server.arg("slider2");
+                arg = request->arg("slider2");
                 if (!arg.isEmpty()) {
                     slider2_value = arg.toInt();
                     snprintf(web_msg, sizeof(web_msg), "Slider 2 value now '%d'", slider2_value);
@@ -494,20 +473,19 @@ void setup_webserver() {
             }
         }
 
-        web_server.sendHeader("Location", "/", true);  
-        web_server.send(302, "text/plain", "");
+        request->redirect("/");  
     });
 
-    web_server.on("/json/Wifi", []() {
+    web_server.on("/json/Wifi", [](AsyncWebServerRequest *request) {
         json_Wifi(msg, sizeof(msg), lastBssid, lastRssi);
-        web_server.send(200, "application/json", msg);
+        request->send(200, "application/json", msg);
     });
 
 
     // Call this page to reset the ESP
-    web_server.on("/reset", HTTP_POST, []() {
+    web_server.on("/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
         slog("RESET ESP32", LOG_NOTICE);
-        web_server.send(200, "text/html",
+        request->send(200, "text/html",
                         "<html>\n"
                         " <head>\n"
                         "  <title>" PROGNAME " v" VERSION "</title>\n"
@@ -520,29 +498,22 @@ void setup_webserver() {
     });
 
     // Index page
-    web_server.on("/", []() { 
-        web_server.send(200, "text/html", main_page());
+    web_server.on("/", [](AsyncWebServerRequest *request) { 
+        request->send(200, "text/html", main_page());
     });
 
     // Toggle breathing status led if you dont like it or ota does not work
-    web_server.on("/breathe", HTTP_POST, []() {
+    web_server.on("/breathe", HTTP_ANY, [](AsyncWebServerRequest *request) {
         enabledBreathing = !enabledBreathing; 
         snprintf(web_msg, sizeof(web_msg), "%s", enabledBreathing ? "breathing enabled" : "breathing disabled");
-        web_server.sendHeader("Location", "/", true);  
-        web_server.send(302, "text/plain", "");
+        request->redirect("/");  
     });
 
-    web_server.on("/breathe", HTTP_GET, []() {
-        snprintf(web_msg, sizeof(web_msg), "%s", enabledBreathing ? "breathing enabled" : "breathing disabled");
-        web_server.sendHeader("Location", "/", true);  
-        web_server.send(302, "text/plain", "");
-    });
-
-    web_server.on("/wipe", HTTP_POST, []() {
+    web_server.on("/wipe", HTTP_POST, [](AsyncWebServerRequest *request) {
         WiFiManager wm;
         wm.resetSettings();
         slog("Wipe WLAN config and reset ESP32", LOG_NOTICE);
-        web_server.send(200, "text/html",
+        request->send(200, "text/html",
                         "<html>\n"
                         " <head>\n"
                         "  <title>" PROGNAME " v" VERSION "</title>\n"
@@ -554,10 +525,48 @@ void setup_webserver() {
         ESP.restart();
     });
 
+    // Simple Firmware Update Form
+    web_server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(200, "text/html", "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
+    });
+
+    web_server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
+        shouldReboot = !Update.hasError();
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot ? "OK" : "FAIL");
+        response->addHeader("Connection", "close");
+        request->send(response);
+    },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+        if(!index){
+            Serial.printf("Update Start: %s\n", filename.c_str());
+            if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)){
+                Update.printError(Serial);
+                snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+                request->redirect("/");  
+            }
+        }
+        if(!Update.hasError()){
+            if(Update.write(data, len) != len){
+                Update.printError(Serial);
+                snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+                request->redirect("/");  
+            }
+        }
+        if(final){
+            if(Update.end(true)){
+                Serial.printf("Update Success: %uB\n", index+len);
+                snprintf(web_msg, sizeof(web_msg), "Update Success: %u Bytes", index+len);
+            } else {
+                Update.printError(Serial);
+                snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+            }
+            request->redirect("/"); 
+        }
+    });
+
     // Catch all page
-    web_server.onNotFound( []() { 
+    web_server.onNotFound( [](AsyncWebServerRequest *request) { 
         snprintf(web_msg, sizeof(web_msg), "%s", "<h2>page not found</h2>\n");
-        web_server.send(404, "text/html", main_page()); 
+        request->send(404, "text/html", main_page()); 
     });
 
     web_server.begin();
@@ -710,6 +719,24 @@ bool handle_mqtt( bool time_valid ) {
 }
 
 
+void handle_reboot() {
+    static const int32_t reboot_delay = 1000;  // if should_reboot wait this long in ms
+    static uint32_t start = 0;                 // first detected should_reboot
+
+    if (shouldReboot) {
+        uint32_t now = millis();
+        if (!start) {
+            start = now;
+        }
+        else {
+            if (now - start > reboot_delay) {
+                ESP.restart();
+            }
+        }
+    }
+}
+
+
 // Startup
 void setup() {
     WiFi.mode(WIFI_STA);
@@ -732,7 +759,6 @@ void setup() {
     digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? HIGH : LOW);
 
     WiFiManager wm;
-    // wm.resetSettings();
     wm.setConfigPortalTimeout(180);
     if (!wm.autoConnect(WiFi.getHostname(), WiFi.getHostname())) {
         Serial.println("Failed to connect WLAN, about to reset");
@@ -762,7 +788,6 @@ void setup() {
 
     fileSys.begin();
 
-    esp_updater.setup(&web_server);
     setup_webserver();
 
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
@@ -800,12 +825,12 @@ void loop() {
         // do something
     }
 
-    web_server.handleClient();
-
     health &= (influx_status >= 200 && influx_status < 300);
 
     if (have_time && enabledBreathing) {
         health_led.interval(health ? health_ok_interval : health_err_interval);
         health_led.handle();
     }
+
+    handle_reboot();
 }
