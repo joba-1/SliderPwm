@@ -35,7 +35,7 @@ def root():
   </head>
 
   <body>
-    <form action="/change" method ="post" enctype="multipart/form-data" id="form">
+    <form action="/change" method="post" enctype="multipart/form-data" id="form">
       <div class="container">
         <div class="row">
           <div class="col-12">
