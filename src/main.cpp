@@ -525,9 +525,41 @@ void setup_webserver() {
         ESP.restart();
     });
 
-    // Simple Firmware Update Form
+    // Firmware Update Form
     web_server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "text/html", "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
+        static const char page[] =
+            "<!doctype html>\n"
+            "<html lang=\"en\">\n"
+            " <head>\n"
+            "  <meta charset=\"utf-8\">\n"
+            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+            "  <link href=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAADFBMVEUqYbutnpTMuq/70SQgIef5AAAAVUlEQVQIHWOAAPkvDAyM3+Y7MLA7NV5g4GVqKGCQYWowYTBhapBhMGB04GE4/0X+M8Pxi+6XGS67XzzO8FH+iz/Dl/q/8gx/2S/UM/y/wP6f4T8QAAB3Bx3jhPJqfQAAAABJRU5ErkJggg==\" rel=\"icon\" type=\"image/x-icon\" />\n"
+            "  <link href=\"bootstrap.min.css\" rel=\"stylesheet\">\n"
+            "  <title>" PROGNAME " v" VERSION "</title>\n"
+            " </head>\n"
+            " <body>\n"
+            "  <div class=\"container\">\n"
+            "    <div class=\"row\">\n"
+            "     <div class=\"col-12\">\n"
+            "      <h1>" PROGNAME " v" VERSION "</h1>\n"
+            "     </div>\n"
+            "    </div>\n"
+            "    <form method=\"POST\" action=\"/update\" enctype=\"multipart/form-data\">\n"
+            "     <div class=\"row\">\n"
+            "      <div class=\"col\">\n"
+            "       <input type=\"file\" name=\"update\">\n"
+            "      </div>\n"
+            "      <div class=\"col\">\n"
+            "       <input type=\"submit\" value=\"Update\">\n"
+            "      </div>\n"
+            "     </div>\n"
+            "    </form>\n"
+            "  </div>\n"
+            "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
+            " </body>\n"
+            "</html>\n";
+ 
+        request->send(200, "text/html", page);
     });
 
     web_server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
