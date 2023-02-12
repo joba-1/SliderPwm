@@ -9,6 +9,8 @@ The duty cycle (led brightnes) already changes while dragging the slider, not on
 
 ![image](https://user-images.githubusercontent.com/32450554/218340075-af00e690-9560-4062-93e2-f44e5e82e25c.png)
 
+When switching ~5A with the mosfet and no heatsink, it gets warm (~60°C). For more current a heatsink is advisable.
+
 Warning: 
 I used an ESP32 board with USB connector for initial programming. 
 When connecting the USB port while ESP32-VDD was connected with Mini360-VO as described in the circuit diagram the ESP32 board LDO got very hot within seconds and the ESP32 did not boot. No power supply and no led strip was connected. Reason is unknown to me - I just avoided it.
