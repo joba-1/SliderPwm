@@ -4,33 +4,15 @@ Demo HTML Slider with server feedback on value changes
 Influx DB can be created with command influx -execute "create database PROGNAME"
 Monitors GPIO pin pulled to ground as key press
 Use builtin led to represent health status
+TODO
+* maybe use websocket?
 */
-
-/*
-Generic ESP8266/ESP32 app framework
-
-TODO Enable framework features with defines:
-
-USE_WIFIMANAGER
-USE_NTP
-USE_SYSLOG
-USE_MQTT
-USE_WEBSERVER
-USE_OTA
-USE_INFLUX
-USE_HEALTHLED
-
-*/
-
-void setup_app();
-bool handle_app();
 
 #include <Arduino.h>
 
+#include <app.h>
 
-int slider1_value = 33;
-int slider2_value = 66;
-
+int slider1_value;
 
 // Config for ESP8266 or ESP32
 #if defined(ESP8266)
@@ -81,7 +63,7 @@ int slider2_value = 66;
     // Reset reason
     #include "rom/rtc.h"
 #else
-    #error "No ESP8266 or ESP32, define your rs485 stream, pins and includes here!"
+    #error "No ESP8266 or ESP32, define your pins and includes here!"
 #endif
 
 // Health LED
@@ -90,6 +72,7 @@ const uint32_t health_ok_interval = 5000;
 const uint32_t health_err_interval = 1000;
 Breathing health_led(health_ok_interval, HEALTH_LED_PIN, HEALTH_LED_INVERTED, HEALTH_LED_CHANNEL);
 bool enabledBreathing = true;  // global flag to switch breathing animation on or off
+uint32_t slider1_dirty = 0;
 
 // Infrastructure
 #include <Syslog.h>
@@ -314,32 +297,19 @@ const char *main_page() {
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
-        "     <div class=\"col-11\">\n"
-        "      <input style=\"width:100%%\" id=\"slider1\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
+        "     <div class=\"col-10\">\n"
+        "      <input style=\"width:100%%\" id=\"slider1\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
         "     </div>\n"
-        "     <div class=\"col-1\">\n"
+        "     <div class=\"col-2\">\n"
         "      <div class=\"float-end\" id=\"sliderValue1\">%d</div>\n"
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row\">\n"
-        "     <div class=\"col-11\">\n"
-        "      <input style=\"width:100%%\" id=\"slider2\" type=\"range\" min=\"1\" max=\"100\" step=\"1\" value=\"%d\">\n"
-        "     </div>\n"
-        "     <div class=\"col-1\">\n"
-        "      <div class=\"float-end\" id=\"sliderValue2\">%d</div>\n"
-        "     </div>\n"
-        "    </div>\n"
-        "    <div class=\"row\">\n"
         "     <div class=\"col-2\" mr-auto>\n"
-        "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-1\">ONE</button>\n"
+        "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-1\">Toggle</button>\n"
         "     </div>\n"
         "     <div class=\"col-8\"></div>\n"
-        "     <div class=\"col-2\">\n"
-        "      <div class=\"float-end\">\n"
-        "       <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-2\">TWO</button>\n"
-        "      </div>\n"
-        "     </div>\n"
-        "    </div>\n"
+       "    </div>\n"
         "   </form>\n"
         "   <div class=\"accordion\" id=\"infos\">\n"
         "    <div class=\"accordion-item\">\n"
@@ -412,7 +382,6 @@ const char *main_page() {
         "  <script src=\"slider.js\"></script>\n"
         "  <script>\n"
         "   sliderCallback('slider1', 'sliderValue1', '/change');\n"
-        "   sliderCallback('slider2', 'sliderValue2', '/change');\n"
         "  </script>\n"
         " </body>\n"
         "</html>\n";
@@ -426,7 +395,7 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, slider2_value, slider2_value, 
+    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, 
         start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi, web_msg);
     *web_msg = '\0';
     return page;
@@ -448,32 +417,22 @@ void setup_webserver() {
         String arg = request->arg("button");
         if (!arg.isEmpty()) {
             if (arg.equals("button-1")) {
-                snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed", arg.c_str());
+                ;
+                snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed: %s", arg.c_str(), app_status(true) ? "ON" : "OFF");
                 slog(web_msg, prio);
             }
-            else if (arg.equals("button-2")) {
-                snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed", arg.c_str());
-                slog(web_msg, prio);
-            }
+            request->redirect("/");  
         }
         else {
             arg = request->arg("slider1");
             if (!arg.isEmpty()) {
                 slider1_value = arg.toInt();
-                snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", slider1_value);
-                slog(web_msg, prio);
+                app_value(slider1_value);
+                // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", slider1_value);
+                // slog(web_msg, prio);
             }
-            else {
-                arg = request->arg("slider2");
-                if (!arg.isEmpty()) {
-                    slider2_value = arg.toInt();
-                    snprintf(web_msg, sizeof(web_msg), "Slider 2 value now '%d'", slider2_value);
-                    slog(web_msg, prio);
-                }
-            }
+            request->send(204, "text/html", "");  // much smoother slider experience than redirect()
         }
-
-        request->redirect("/");  
     });
 
     web_server.on("/json/Wifi", [](AsyncWebServerRequest *request) {
@@ -506,7 +465,7 @@ void setup_webserver() {
     web_server.on("/breathe", HTTP_ANY, [](AsyncWebServerRequest *request) {
         enabledBreathing = !enabledBreathing; 
         snprintf(web_msg, sizeof(web_msg), "%s", enabledBreathing ? "breathing enabled" : "breathing disabled");
-        request->redirect("/");  
+        request->send(204, "text/html", "");
     });
 
     web_server.on("/wipe", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -612,6 +571,7 @@ void setup_webserver() {
 
 // handle on key press
 // pin is pulled up if released and pulled down if pressed
+// return true if &status has changed
 bool handle_button( bool &status ) {
     static uint32_t prevTime = 0;
     static uint32_t debounceStatus = 1;
@@ -771,10 +731,10 @@ void handle_reboot() {
 
 // Startup
 void setup() {
-    WiFi.mode(WIFI_STA);
     String host(HOSTNAME);
     host.toLowerCase();
     WiFi.hostname(host.c_str());
+    WiFi.mode(WIFI_STA);
 
     pinMode(HEALTH_LED_PIN, OUTPUT);
     digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
@@ -832,7 +792,7 @@ void setup() {
 
     pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
 
-    setup_app();
+    setup_app(slider1_value);
 
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
@@ -854,7 +814,7 @@ void loop() {
     health &= handle_wifi();
 
     if (handle_button(button_pressed)) {
-        // do something
+        app_status(button_pressed);
     }
 
     health &= (influx_status >= 200 && influx_status < 300);

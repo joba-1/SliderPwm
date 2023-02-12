@@ -1,6 +1,6 @@
 #include <Breathing.h>
 
-#define PWM_FREQ 1000
+#define PWM_FREQ 5000
 
 #ifndef PWMRANGE
 #define PWMRANGE 1023
