@@ -1,6 +1,7 @@
 # Slider PWM
 
-Use html range slider callbacks to control pwm duty cycle.
+Use html range slider callbacks to control pwm duty cycle. 
+The duty cycle (led brightnes) already changes while dragging the slider, not only after releasing the slider. 
 
 ![image](https://user-images.githubusercontent.com/32450554/218337707-5bb61d95-975d-4ba3-b0eb-d9acf8543b60.png)
 
