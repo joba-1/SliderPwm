@@ -1,5 +1,5 @@
 /*
-Demo HTML Slider with server feedback on value changes
+HTML Slider with server feedback on value changes to control PWM duty cycle (see app.cpp)
 
 Influx DB can be created with command influx -execute "create database PROGNAME"
 Monitors GPIO pin pulled to ground as key press
