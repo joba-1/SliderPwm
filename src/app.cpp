@@ -3,7 +3,7 @@
 #define PWM_PIN 5
 #define PWM_CHANNEL 1
 
-#define PWM_FREQ 5000
+#define PWM_FREQ 25000
 
 #ifndef PWMRANGE
 #define PWMRANGE 1023
