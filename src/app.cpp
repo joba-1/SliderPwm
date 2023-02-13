@@ -20,6 +20,7 @@ static uint32_t duty = 0;
 #include <Preferences.h>
 Preferences prefs;
 uint32_t duty_dirty = 0;  // time of last duty change or 0 if no change since last save
+uint32_t status_dirty = 0;  // time of last isOn change or 0 if no change since last save
 int duty_value = 0;
 
 static uint32_t value2duty( int value ) {
@@ -42,7 +43,8 @@ void app_value( int value ) {
     if( value < 0 || value > 1000 ) return;  // for now slider should send promille (0..1000)
     uint32_t new_duty = value2duty(value);   // convert slider value to duty (0..PWMRANGE)
     if( new_duty != duty ) {
-        duty_dirty = (millis() & ~1) - 1; // value is dirty now. Make sure time is never set to 0
+        duty_dirty = millis();  // start to accumulate rapid changes to save flash.
+        if( !duty_dirty ) duty_dirty--;  // Make sure update time is never set to 0
         duty = new_duty;
         duty_value = value; // for making persistent later
         if( isOn ) {
@@ -61,13 +63,20 @@ void setup_app( int &value ) {
     #endif
     prefs.begin(PROGNAME, false);
     value = prefs.getInt("slider1", 250);
+    isOn = prefs.getBool("on", true);
     app_value(value);
 }
 
 bool handle_app() {
     if( duty_dirty && millis() - duty_dirty > 1000 ) {
+        // duty was last changed more than a second ago: save now
         prefs.putInt("slider1", duty_value);
         duty_dirty = 0;
+    }
+    if( status_dirty && millis() - status_dirty > 1000 ) {
+        // isOn was last changed more than a second ago: save now
+        prefs.putBool("on", isOn);
+        status_dirty = 0;
     }
     return true;
 }
@@ -75,6 +84,8 @@ bool handle_app() {
 bool app_status( bool status ) {
     if( status ) {  // button state changed to pressed -> toggle on/off
         isOn = !isOn;
+        status_dirty = millis();  // start to accumulate rapid changes to save flash.
+        if( !status_dirty ) status_dirty--;  // Make sure update time is never set to 0
         if( isOn ) {
             set_duty(duty);
         }
