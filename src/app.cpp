@@ -23,8 +23,12 @@ uint32_t duty_dirty = 0;  // time of last duty change or 0 if no change since la
 uint32_t status_dirty = 0;  // time of last isOn change or 0 if no change since last save
 int duty_value = 0;
 
+
 static uint32_t value2duty( int value ) {
-    uint32_t new_duty = (PWMRANGE * value) / 1000;
+    // 0=0, 1=1, then duty ~ value^2 with duty=PWMRANGE for value=1000
+    const int min_value = sqrt(PWMRANGE);
+    if (value > 0) value += min_value;
+    uint32_t new_duty = (PWMRANGE * value) / (1000 + min_value);
     new_duty *= new_duty;   // smaller duty has smaller steps...
     new_duty /= PWMRANGE;   // ...by quadratic function
     return new_duty;
@@ -54,16 +58,19 @@ void app_value( int value ) {
 }
 
 void setup_app() {
+    prefs.begin(PROGNAME, false);
+    isOn = prefs.getBool("on", true);
+    int value = prefs.getInt("slider1", 250);
+
     #if defined(ESP32)
-        ledcAttachPin(PWM_PIN, PWM_CHANNEL);
         ledcSetup(PWM_CHANNEL, PWM_FREQ, PWMBITS);
+        app_value(value);
+        ledcAttachPin(PWM_PIN, PWM_CHANNEL);
     #else
         analogWriteRange(PWMRANGE);
         pinMode(PWM_PIN, OUTPUT);
+        app_value(value);
     #endif
-    prefs.begin(PROGNAME, false);
-    isOn = prefs.getBool("on", true);
-    app_value(prefs.getInt("slider1", 250));
 }
 
 bool handle_app() {
