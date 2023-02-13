@@ -191,7 +191,7 @@ void report_pwm( int duty, bool on ) {
         "Pwm,Host=%s,Version=" VERSION " "
         "Duty=%d,"
         "Power=%d";
-    static const uint32_t interval = 10000;
+    static const uint32_t interval = 60000;
     static uint32_t prev_ms = 0;
     static uint32_t changed_ms = 0;
     static int prevDuty = -1;
@@ -209,7 +209,7 @@ void report_pwm( int duty, bool on ) {
         prevPower = on;
     }
 
-    if ( (now - changed_ms > 1000) || (now - prev_ms > interval) ) {
+    if ( (changed_ms && now - changed_ms > 1000) || (now - prev_ms > interval) ) {
         json_Pwm(msg, sizeof(msg), duty, on);
         slog(msg);
         publish(MQTT_TOPIC "/json/Pwm", msg);
@@ -234,7 +234,7 @@ void report_wifi( int8_t rssi, const byte *bssid ) {
         "BSSID=\"%s\","
         "IP=\"%s\","
         "RSSI=%d";
-    static const uint32_t interval = 10000;
+    static const uint32_t interval = 60000;
     static const int8_t min_diff = 5;
     static uint32_t prev = 0;
     static int8_t reportedRssi = 0;
@@ -709,9 +709,25 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     typedef struct cmd { const char *name; void (*action)(void); } cmd_t;
     
     static cmd_t cmds[] = { 
-        // { "load on", [](){ esmart3.setLoad(true); } },
-        // { "load off", [](){ esmart3.setLoad(false); } }
+        { "toggle", [](){ app_status(true); } },
+        { "on", [](){ if (!get_power()) app_status(true); } },
+        { "off", [](){ if (get_power()) app_status(true); } }
     };
+
+    char *data = (char *)payload;
+
+    if (length > 5 && length < 10 && strncasecmp("duty ", data, 5) == 0) {
+        char num[5] = {0};
+        char *end;
+        strncpy(num, &data[5], sizeof(num)-1);
+        int value = (int)strtol(&data[5], &end, 0);
+        if (end != &data[5]) {
+            snprintf(msg, sizeof(msg), "Execute mqtt command 'duty %d'", value);
+            slog(msg, LOG_INFO);
+            app_value(value);
+            return;
+        }
+    }
 
     if (strcasecmp(MQTT_TOPIC "/cmd", topic) == 0) {
         for (auto &cmd: cmds) {
