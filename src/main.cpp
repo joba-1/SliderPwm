@@ -12,8 +12,6 @@ TODO
 
 #include <app.h>
 
-int slider1_value;
-
 // Config for ESP8266 or ESP32
 #if defined(ESP8266)
     #define HEALTH_LED_INVERTED false
@@ -72,7 +70,6 @@ const uint32_t health_ok_interval = 5000;
 const uint32_t health_err_interval = 1000;
 Breathing health_led(health_ok_interval, HEALTH_LED_PIN, HEALTH_LED_INVERTED, HEALTH_LED_CHANNEL);
 bool enabledBreathing = true;  // global flag to switch breathing animation on or off
-uint32_t slider1_dirty = 0;
 
 // Infrastructure
 #include <Syslog.h>
@@ -172,6 +169,57 @@ bool json_Wifi(char *json, size_t maxlen, const char *bssid, int8_t rssi) {
     int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), bssid, WiFi.localIP().toString().c_str(), rssi);
 
     return len < maxlen;
+}
+
+
+// Wifi status as JSON
+bool json_Pwm(char *json, size_t maxlen, int duty, bool on) {
+    static const char jsonFmt[] =
+        "{\"Version\":" VERSION ",\"Hostname\":\"%s\",\"Pwm\":{"
+        "\"Duty\":%d,"
+        "\"Power\":%d}}";
+
+    int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), get_duty(), get_power() ? 1 : 0);
+
+    return len < maxlen;
+}
+
+
+// Report a change of duty or power
+void report_pwm( int duty, bool on ) {
+    static const char lineFmt[] =
+        "Pwm,Host=%s,Version=" VERSION " "
+        "Duty=%d,"
+        "Power=%d";
+    static const uint32_t interval = 10000;
+    static uint32_t prev_ms = 0;
+    static uint32_t changed_ms = 0;
+    static int prevDuty = -1;
+    static bool prevPower = false;
+
+    if (!WiFi.isConnected()) return;
+
+    uint32_t now = millis();
+
+    // rate limit changes
+    if (duty != prevDuty || on != prevPower) {
+        changed_ms = now;
+        if (!changed_ms) changed_ms--;
+        prevDuty = duty;
+        prevPower = on;
+    }
+
+    if ( (now - changed_ms > 1000) || (now - prev_ms > interval) ) {
+        json_Pwm(msg, sizeof(msg), duty, on);
+        slog(msg);
+        publish(MQTT_TOPIC "/json/Pwm", msg);
+
+        snprintf(msg, sizeof(msg), lineFmt, WiFi.getHostname(), duty, on);
+        postInflux(msg);
+
+        prev_ms = now;
+        changed_ms = 0;
+    }
 }
 
 
@@ -321,6 +369,10 @@ const char *main_page() {
         "     <div id=\"infos1\" class=\"accordion-collapse collapse\" aria-labelledby=\"heading1\" data-bs-parent=\"#infos\">\n"
         "      <div class=\"accordion-body\">\n"
         "       <div class=\"row\">\n"
+        "        <div class=\"col\"><label for=\"pwm\">Pwm</label></div>\n"
+        "        <div class=\"col\" id=\"pwm\"><a href=\"/json/Pwm\">JSON</a></div>\n"
+        "       </div>\n"
+        "       <div class=\"row\">\n"
         "        <div class=\"col\"><label for=\"wifi\">Wifi</label></div>\n"
         "        <div class=\"col\" id=\"wifi\"><a href=\"/json/Wifi\">JSON</a></div>\n"
         "       </div>\n"
@@ -348,7 +400,7 @@ const char *main_page() {
         "        <div class=\"col\"><label for=\"rssi\">RSSI %s</label></div>\n"
         "        <div class=\"col\" id=\"rssi\">%d</div>\n"
         "       </div>\n"
-        "       <div class=\"row\">\n"
+        "       <div class=\"row mt-4\">\n"
         "        <div class=\"col\">\n"
         "         <form action=\"breathe\" method=\"post\">\n"
         "          <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"breathe\">Toggle Breath</button>\n"
@@ -395,7 +447,7 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, slider1_value, slider1_value, 
+    snprintf(page, sizeof(page), fmt, get_duty(), get_duty(), 
         start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi, web_msg);
     *web_msg = '\0';
     return page;
@@ -426,9 +478,8 @@ void setup_webserver() {
         else {
             arg = request->arg("slider1");
             if (!arg.isEmpty()) {
-                slider1_value = arg.toInt();
-                app_value(slider1_value);
-                // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", slider1_value);
+                app_value(arg.toInt());
+                // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", get_duty());
                 // slog(web_msg, prio);
             }
             request->send(204, "text/html", "");  // much smoother slider experience than redirect()
@@ -440,6 +491,10 @@ void setup_webserver() {
         request->send(200, "application/json", msg);
     });
 
+    web_server.on("/json/Pwm", [](AsyncWebServerRequest *request) {
+        json_Pwm(msg, sizeof(msg), get_duty(), get_power());
+        request->send(200, "application/json", msg);
+    });
 
     // Call this page to reset the ESP
     web_server.on("/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -792,7 +847,7 @@ void setup() {
 
     pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
 
-    setup_app(slider1_value);
+    setup_app();
 
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
@@ -818,6 +873,8 @@ void loop() {
     }
 
     health &= (influx_status >= 200 && influx_status < 300);
+
+    report_pwm(get_duty(), get_power());
 
     if (have_time && enabledBreathing) {
         health_led.interval(health ? health_ok_interval : health_err_interval);

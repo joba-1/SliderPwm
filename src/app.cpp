@@ -53,7 +53,7 @@ void app_value( int value ) {
     }
 }
 
-void setup_app( int &value ) {
+void setup_app() {
     #if defined(ESP32)
         ledcAttachPin(PWM_PIN, PWM_CHANNEL);
         ledcSetup(PWM_CHANNEL, PWM_FREQ, PWMBITS);
@@ -62,9 +62,8 @@ void setup_app( int &value ) {
         pinMode(PWM_PIN, OUTPUT);
     #endif
     prefs.begin(PROGNAME, false);
-    value = prefs.getInt("slider1", 250);
     isOn = prefs.getBool("on", true);
-    app_value(value);
+    app_value(prefs.getInt("slider1", 250));
 }
 
 bool handle_app() {
@@ -93,5 +92,13 @@ bool app_status( bool status ) {
             set_duty(0);
         }
     }
+    return isOn;
+}
+
+int get_duty() {
+    return duty_value;
+}
+
+bool get_power() {
     return isOn;
 }
