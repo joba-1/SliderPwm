@@ -802,16 +802,18 @@ void handle_reboot() {
 
 // Startup
 void setup() {
-    String host(HOSTNAME);
-    host.toLowerCase();
-    WiFi.hostname(host.c_str());
-    WiFi.mode(WIFI_STA);
+    setup_app();
 
     pinMode(HEALTH_LED_PIN, OUTPUT);
     digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
 
     Serial.begin(BAUDRATE);
     Serial.println("\nStarting " PROGNAME " v" VERSION " " __DATE__ " " __TIME__);
+
+    String host(HOSTNAME);
+    host.toLowerCase();
+    WiFi.hostname(host.c_str());
+    WiFi.mode(WIFI_STA);
 
     // Syslog setup
     syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
@@ -862,8 +864,6 @@ void setup() {
 #endif
 
     pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
-
-    setup_app();
 
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
