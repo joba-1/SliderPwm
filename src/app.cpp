@@ -51,9 +51,9 @@ void app_value( int value ) {
         if( !duty_dirty ) duty_dirty--;  // Make sure update time is never set to 0
         duty = new_duty;
         duty_value = value; // for making persistent later
-        if( isOn ) {
-            set_duty(duty);
-        }
+    }
+    if( isOn ) {
+        set_duty(duty);
     }
 }
 

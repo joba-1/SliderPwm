@@ -868,6 +868,8 @@ void setup() {
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
 
+    setup_app();  // TODO done twice since sometimes light stays off until toggled twice
+
     slog("Setup done", LOG_NOTICE);
 }
 
