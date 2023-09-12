@@ -173,28 +173,32 @@ bool json_Wifi(char *json, size_t maxlen, const char *bssid, int8_t rssi) {
 
 
 // Wifi status as JSON
-bool json_Pwm(char *json, size_t maxlen, int duty, bool on) {
+bool json_Pwm(char *json, size_t maxlen, bool on) {
     static const char jsonFmt[] =
         "{\"Version\":" VERSION ",\"Hostname\":\"%s\",\"Pwm\":{"
-        "\"Duty\":%d,"
+        "\"Duties\":[%s],"
         "\"Power\":%d}}";
+    
 
-    int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), get_duty(), get_power() ? 1 : 0);
+    int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), get_duties(), get_power() ? 1 : 0);
 
     return len < maxlen;
 }
 
 
 // Report a change of duty or power
-void report_pwm( int duty, bool on ) {
+void report_pwm( bool on ) {
     static const char lineFmt[] =
         "Pwm,Host=%s,Version=" VERSION " "
-        "Duty=%d,"
+        "DutyR=%d,"
+        "DutyG=%d,"
+        "DutyB=%d,"
+        "DutyW=%d,"
         "Power=%d";
     static const uint32_t interval = 60000;
     static uint32_t prev_ms = 0;
     static uint32_t changed_ms = 0;
-    static int prevDuty = -1;
+    static int prevDuty[LED_COUNT] = { -1, -1, -1, -1 };
     static bool prevPower = false;
 
     if (!WiFi.isConnected()) return;
@@ -202,19 +206,24 @@ void report_pwm( int duty, bool on ) {
     uint32_t now = millis();
 
     // rate limit changes
-    if (duty != prevDuty || on != prevPower) {
-        changed_ms = now;
-        if (!changed_ms) changed_ms--;
-        prevDuty = duty;
-        prevPower = on;
+    for( int i = LED_START; i < LED_COUNT; i++ ) {
+        led_t led = static_cast<led_t>(i);
+
+        if (get_duty(led) != prevDuty[led] || on != prevPower) {
+            changed_ms = now;
+            if (!changed_ms) changed_ms--;
+            prevDuty[led] = get_duty(led);
+            prevPower = on;
+        }
     }
 
     if ( (changed_ms && now - changed_ms > 1000) || (now - prev_ms > interval) ) {
-        json_Pwm(msg, sizeof(msg), duty, on);
+        json_Pwm(msg, sizeof(msg), on);
         slog(msg);
         publish(MQTT_TOPIC "/json/Pwm", msg);
 
-        snprintf(msg, sizeof(msg), lineFmt, WiFi.getHostname(), duty, on);
+        snprintf(msg, sizeof(msg), lineFmt, WiFi.getHostname(), 
+            get_duty(LED_R), get_duty(LED_G), get_duty(LED_B), get_duty(LED_W), on);
         postInflux(msg);
 
         prev_ms = now;
@@ -353,11 +362,35 @@ const char *main_page() {
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row my-4\">\n"
+        "     <div class=\"col-10\">\n"
+        "      <input style=\"width:100%%\" id=\"slider2\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
+        "     </div>\n"
+        "     <div class=\"col-2\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue2\">%d</div>\n"
+        "     </div>\n"
+        "    </div>\n"
+        "    <div class=\"row my-4\">\n"
+        "     <div class=\"col-10\">\n"
+        "      <input style=\"width:100%%\" id=\"slider3\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
+        "     </div>\n"
+        "     <div class=\"col-2\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue3\">%d</div>\n"
+        "     </div>\n"
+        "    </div>\n"
+        "    <div class=\"row my-4\">\n"
+        "     <div class=\"col-10\">\n"
+        "      <input style=\"width:100%%\" id=\"slider4\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
+        "     </div>\n"
+        "     <div class=\"col-2\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue4\">%d</div>\n"
+        "     </div>\n"
+        "    </div>\n"
+        "    <div class=\"row my-4\">\n"
         "     <div class=\"col-2\" mr-auto>\n"
         "      <button class=\"btn btn-primary\" button type=\"submit\" name=\"button\" value=\"button-1\">Toggle</button>\n"
         "     </div>\n"
         "     <div class=\"col-8\"></div>\n"
-       "    </div>\n"
+        "    </div>\n"
         "   </form>\n"
         "   <div class=\"accordion\" id=\"infos\">\n"
         "    <div class=\"accordion-item\">\n"
@@ -433,7 +466,10 @@ const char *main_page() {
         "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
         "  <script src=\"slider.js\"></script>\n"
         "  <script>\n"
-        "   sliderCallback('slider1', 'sliderValue1', '/change');\n"
+        "   sliderCallback('slider1', 'sliderValue1', '/change1');\n"
+        "   sliderCallback('slider2', 'sliderValue2', '/change2');\n"
+        "   sliderCallback('slider3', 'sliderValue3', '/change3');\n"
+        "   sliderCallback('slider4', 'sliderValue4', '/change4');\n"
         "  </script>\n"
         " </body>\n"
         "</html>\n";
@@ -447,8 +483,10 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, get_duty(), get_duty(), 
-        start_time, curr_time, influx_time, influx_status, lastBssid, lastRssi, web_msg);
+    snprintf(page, sizeof(page), fmt, get_duty(LED_R), get_duty(LED_R), 
+        get_duty(LED_G), get_duty(LED_G), get_duty(LED_B), get_duty(LED_B), 
+        get_duty(LED_W), get_duty(LED_W), start_time, curr_time, 
+        influx_time, influx_status, lastBssid, lastRssi, web_msg);
     *web_msg = '\0';
     return page;
 }
@@ -476,13 +514,16 @@ void setup_webserver() {
             request->redirect("/");  
         }
         else {
-            arg = request->arg("slider1");
-            if (!arg.isEmpty()) {
-                app_value(arg.toInt());
-                // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", get_duty());
-                // slog(web_msg, prio);
+            for( int i = LED_START; i < LED_COUNT; i++ ) {
+                led_t led = static_cast<led_t>(i);
+                arg = request->arg(get_slider(i));
+                if (!arg.isEmpty()) {
+                    app_value(led, arg.toInt());
+                    // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", get_duty());
+                    // slog(web_msg, prio);
+                }
+                request->send(204, "text/html", "");  // much smoother slider experience than redirect()
             }
-            request->send(204, "text/html", "");  // much smoother slider experience than redirect()
         }
     });
 
@@ -492,7 +533,7 @@ void setup_webserver() {
     });
 
     web_server.on("/json/Pwm", [](AsyncWebServerRequest *request) {
-        json_Pwm(msg, sizeof(msg), get_duty(), get_power());
+        json_Pwm(msg, sizeof(msg), get_power());
         request->send(200, "application/json", msg);
     });
 
@@ -724,7 +765,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
         if (end != &data[5]) {
             snprintf(msg, sizeof(msg), "Execute mqtt command 'duty %d'", value);
             slog(msg, LOG_INFO);
-            app_value(value);
+            app_value(LED_W, value);  // for now only white channel
             return;
         }
     }
@@ -892,7 +933,7 @@ void loop() {
 
     health &= (influx_status >= 200 && influx_status < 300);
 
-    report_pwm(get_duty(), get_power());
+    report_pwm(get_power());
 
     if (have_time && enabledBreathing) {
         health_led.interval(health ? health_ok_interval : health_err_interval);

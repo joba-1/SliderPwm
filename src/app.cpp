@@ -1,7 +1,9 @@
 #include <Arduino.h>
 
-#define PWM_PIN 5
-#define PWM_CHANNEL 1
+#include <app.h>
+
+const uint8_t PINS[LED_COUNT] = { 26, 18, 19, 23 };
+const uint8_t CHAN[LED_COUNT] = { 0, 1, 2, 3 };
 
 #define PWM_FREQ 25000
 
@@ -14,14 +16,15 @@
 #endif
 
 static bool isOn = true;
-static uint32_t duty = 0;
+static uint32_t duty[LED_COUNT] = { 0 };
 
 // ESP32 only thing?
 #include <Preferences.h>
 Preferences prefs;
-uint32_t duty_dirty = 0;  // time of last duty change or 0 if no change since last save
+static uint32_t duty_dirty[LED_COUNT] = { 0 };  // time of last duty change or 0 if no change since last save
 uint32_t status_dirty = 0;  // time of last isOn change or 0 if no change since last save
-int duty_value = 0;
+static int duty_value[LED_COUNT] = { 0 };
+static char slider[] = "sliderX";
 
 
 static uint32_t value2duty( int value ) {
@@ -34,50 +37,70 @@ static uint32_t value2duty( int value ) {
     return new_duty;
 }
 
-static void set_duty( uint32_t new_duty ) {
+static void set_duty( led_t led, uint32_t new_duty ) {
     #if defined(ESP32)
-        ledcWrite(PWM_CHANNEL, new_duty);
+        ledcWrite(CHAN[led], new_duty);
     #else
-        analogWrite(PWM_PIN, new_duty);
+        analogWrite(PINS[led], new_duty);
     #endif
 }
 
 
-void app_value( int value ) {
+void app_value( led_t led, int value ) {
     if( value < 0 || value > 1000 ) return;  // for now slider should send promille (0..1000)
     uint32_t new_duty = value2duty(value);   // convert slider value to duty (0..PWMRANGE)
-    if( new_duty != duty ) {
-        duty_dirty = millis();  // start to accumulate rapid changes to save flash.
-        if( !duty_dirty ) duty_dirty--;  // Make sure update time is never set to 0
-        duty = new_duty;
-        duty_value = value; // for making persistent later
+    if( new_duty != duty[led] ) {
+        duty_dirty[led] = millis();  // start to accumulate rapid changes to save flash.
+        if( !duty_dirty[led] ) duty_dirty[led]--;  // Make sure update time is never set to 0
+        duty[led] = new_duty;
+        duty_value[led] = value; // for making persistent later
     }
     if( isOn ) {
-        set_duty(duty);
+        set_duty(led, duty[led]);
     }
 }
 
 void setup_app() {
     prefs.begin(PROGNAME, false);
     isOn = prefs.getBool("on", true);
-    int value = prefs.getInt("slider1", 250);
+    int value[LED_COUNT];
+
+    for( int i = LED_START; i < LED_COUNT; i++ ) {
+        led_t led = static_cast<led_t>(i);
+        value[led] = prefs.getInt(get_slider(i), 250);
+    }
 
     #if defined(ESP32)
-        ledcSetup(PWM_CHANNEL, PWM_FREQ, PWMBITS);
-        app_value(value);
-        ledcAttachPin(PWM_PIN, PWM_CHANNEL);
+        for( int i = LED_START; i < LED_COUNT; i++ ) {
+            led_t led = static_cast<led_t>(i);
+            ledcSetup(CHAN[led], PWM_FREQ, PWMBITS);
+            app_value(led, value[led]);
+            ledcAttachPin(PINS[led], CHAN[led]);
+        }
     #else
         analogWriteRange(PWMRANGE);
-        pinMode(PWM_PIN, OUTPUT);
-        app_value(value);
+        for( int i = LED_START; i < LED_COUNT; i++ ) {
+            led_t led = static_cast<led_t>(i);
+            pinMode(PINS[led], OUTPUT);
+            app_value(led, value[led]);
+        }
     #endif
 }
 
+const char *get_slider( int led ) {
+    slider[sizeof(slider)-1] = '0' + led;  // up to 10 sliders
+    return slider;
+}
+
 bool handle_app() {
-    if( duty_dirty && millis() - duty_dirty > 1000 ) {
-        // duty was last changed more than a second ago: save now
-        prefs.putInt("slider1", duty_value);
-        duty_dirty = 0;
+
+    for( int i = LED_START; i < LED_COUNT; i++ ) {
+        led_t led = static_cast<led_t>(i);
+        if( duty_dirty[led] && millis() - duty_dirty[led] > 1000 ) {
+            // duty was last changed more than a second ago: save now
+            prefs.putInt(get_slider(i), duty_value[led]);
+            duty_dirty[led] = 0;
+        }
     }
     if( status_dirty && millis() - status_dirty > 1000 ) {
         // isOn was last changed more than a second ago: save now
@@ -92,18 +115,34 @@ bool app_status( bool status ) {
         isOn = !isOn;
         status_dirty = millis();  // start to accumulate rapid changes to save flash.
         if( !status_dirty ) status_dirty--;  // Make sure update time is never set to 0
-        if( isOn ) {
-            set_duty(duty);
-        }
-        else {
-            set_duty(0);
+        for( int i = LED_START; i < LED_COUNT; i++ ) {
+            led_t led = static_cast<led_t>(i);
+            if( isOn ) {
+                set_duty(led, duty[led]);
+            }
+            else {
+                set_duty(led, 0);
+            }
         }
     }
     return isOn;
 }
 
-int get_duty() {
-    return duty_value;
+int get_duty( led_t led ) {
+    return duty[led];
+}
+
+const char *get_duties() {
+    static char duties[LED_COUNT * 6];
+    char *str = duties;
+    bool sep = false;
+    for( int i = LED_START; i < LED_COUNT; i++ ) {
+        led_t led = static_cast<led_t>(i);
+        int n = snprintf(str, sizeof(duties) - (str - duties) - 1, "%s%d", sep ? "," : "", duty[led]);
+        str += n;
+        sep = true;
+    }
+    return duties;
 }
 
 bool get_power() {
