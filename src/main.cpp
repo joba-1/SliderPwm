@@ -36,6 +36,26 @@ TODO
     #include <WiFiUdp.h>
     WiFiUDP ntpUDP;
     NTPClient ntp(ntpUDP, NTP_SERVER);
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    #define HEALTH_LED_INVERTED true
+    #define HEALTH_LED_PIN 8
+    #define HEALTH_LED_CHANNEL 0
+    #define BUTTON_PIN 9
+
+    // Web Updater
+    #include <ESPAsyncWebServer.h>
+    #include <WiFi.h>
+    #include <ESPmDNS.h>
+    #include <WiFiClient.h>
+
+    // Post to InfluxDB
+    #include <HTTPClient.h>
+    
+    // Time sync
+    #include <time.h>
+
+    // Reset reason
+    #include "rom/rtc.h"
 #elif defined(ESP32)
     #define HEALTH_LED_INVERTED false
     #ifdef LED_BUILTIN
@@ -726,9 +746,13 @@ void print_reset_reason(int core) {
   switch (rtc_get_reset_reason(core)) {
     case 1  : slog("Vbat power on reset");break;
     case 3  : slog("Software reset digital core");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 4  : slog("Legacy watch dog reset digital core");break;
+    #endif
     case 5  : slog("Deep Sleep reset digital core");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 6  : slog("Reset by SLC module, reset digital core");break;
+    #endif
     case 7  : slog("Timer Group0 Watch dog reset digital core");break;
     case 8  : slog("Timer Group1 Watch dog reset digital core");break;
     case 9  : slog("RTC Watch dog Reset digital core");break;
@@ -736,7 +760,9 @@ void print_reset_reason(int core) {
     case 11 : slog("Time Group reset CPU");break;
     case 12 : slog("Software reset CPU");break;
     case 13 : slog("RTC Watch dog Reset CPU");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 14 : slog("for APP CPU, reseted by PRO CPU");break;
+    #endif
     case 15 : slog("Reset when the vdd voltage is not stable");break;
     case 16 : slog("RTC Watch dog reset digital core and rtc module");break;
     default : slog("Reset reason unknown");

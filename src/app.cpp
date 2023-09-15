@@ -2,8 +2,11 @@
 
 #include <app.h>
 
-const uint8_t PINS[LED_COUNT] = { 26, 18, 19, 23 };
-const uint8_t CHAN[LED_COUNT] = { 0, 1, 2, 3 };
+// ESP32 Minikit 
+// const uint8_t PINS[LED_COUNT] = { 26, 18, 19, 23 };
+// ESP32-C3 Mini 
+const uint8_t PINS[LED_COUNT] = { 4, 5, 6, 10 };
+const uint8_t CHAN[LED_COUNT] = { 1, 2, 3, 4 };
 
 #define PWM_FREQ 25000
 
