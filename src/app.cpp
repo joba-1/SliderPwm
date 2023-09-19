@@ -96,7 +96,6 @@ const char *get_slider( int led ) {
 }
 
 bool handle_app() {
-
     for( int i = LED_START; i < LED_COUNT; i++ ) {
         led_t led = static_cast<led_t>(i);
         if( duty_dirty[led] && millis() - duty_dirty[led] > 1000 ) {
