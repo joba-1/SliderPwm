@@ -512,86 +512,24 @@ const char *main_page() {
     return page;
 }
 
-
-// for some reason serveStatic() crashes on a c3 :(
-bool readFile(const char *name, String &content) {
-    bool isGzip = true;
-    File file = SPIFFS.open(String(name) + ".gz");
-    if (!file.available()) {
-        isGzip = false;
-        file = SPIFFS.open(name);
-    }
-    
-    if (!file.available()) {
-        Serial.println("Failed to open file");
-    }
-    else {
-        while (file.available()) {
-            content += (char)file.read();
-        }
-        file.close();
-    }
-
-    return isGzip;
-}
-
-AsyncWebServerResponse *serveFile(const char *name, const char *contentType) {
-    String content;
-    bool gzip = readFile(name, content);
-    AsyncWebServerResponse *response = new AsyncBasicResponse(200, contentType, content);
-    if( gzip ) {
-        response->addHeader("Content-Encoding", "gzip");
-    }
-    return response;
-}
-
-
 // Define web pages for update, reset or for event infos
 void setup_webserver() {
     // css and js files
     // web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css").setCacheControl("max-age=600");
     web_server.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request){
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.min.css: start heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        AsyncWebServerResponse *response = serveFile("/bootstrap.min.css", "text/css");
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.min.css: got file heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        request->send(response);
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.min.css: requested heap %d", ESP.getFreeHeap());
-        slog(web_msg);
+        request->send(SPIFFS, "/bootstrap.min.css", "text/css");
     });
     // web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js").setCacheControl("max-age=600");
     web_server.on("/bootstrap.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.bundle.min.js: start heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        AsyncWebServerResponse *response = serveFile("/bootstrap.bundle.min.js", "application/javascript");
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.bundle.min.js: got file heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        request->send(response);
-        snprintf(web_msg, sizeof(web_msg), "bootstrap.bundle.min.js: requested heap %d", ESP.getFreeHeap());
-        slog(web_msg);
+       request->send(SPIFFS, "/bootstrap.bundle.min.js", "application/javascript");
     });
     // web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js").setCacheControl("max-age=600");
     web_server.on("/jquery.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
-        snprintf(web_msg, sizeof(web_msg), "jquery.min.js: start heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        AsyncWebServerResponse *response = serveFile("/jquery.min.js", "application/javascript");
-        snprintf(web_msg, sizeof(web_msg), "jquery.min.js: got file heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        request->send(response);
-        snprintf(web_msg, sizeof(web_msg), "jquery.min.js: requested heap %d", ESP.getFreeHeap());
-        slog(web_msg);
+        request->send(SPIFFS, "/jquery.min.js", "application/javascript");
     });
     // web_server.serveStatic("/slider.js", fileSys, "/slider.js").setCacheControl("max-age=600");
     web_server.on("/slider.js", HTTP_GET, [](AsyncWebServerRequest *request){
-        snprintf(web_msg, sizeof(web_msg), "slider.js: start heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        AsyncWebServerResponse *response = serveFile("/slider.js", "application/javascript");
-        snprintf(web_msg, sizeof(web_msg), "slider.js: got file heap %d", ESP.getFreeHeap());
-        slog(web_msg);
-        request->send(response);
-        snprintf(web_msg, sizeof(web_msg), "slider.js: requested heap %d", ESP.getFreeHeap());
-        slog(web_msg);
+        request->send(SPIFFS, "/slider.js", "application/javascript");
     });
 
     // change slider value
