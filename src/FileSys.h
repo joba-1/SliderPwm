@@ -1,7 +1,15 @@
 #ifndef FileSys_h
 #define FileSys_h
 
-#include "FS.h"
+#ifdef USE_SPIFFS
+    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+        #include <FS.h>
+    #else
+        #include <SPIFFS.h>
+    #endif
+#else
+    #include <LittleFS.h>
+#endif
 
 // define USE_SPIFFS for SPIFFS, else LittleFS
 class FileSys {
