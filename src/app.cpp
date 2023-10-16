@@ -2,8 +2,18 @@
 
 #include <app.h>
 
-const uint8_t PINS[LED_COUNT] = { 26, 18, 19, 23 };
-const uint8_t CHAN[LED_COUNT] = { 0, 1, 2, 3 };
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  // my ESP32-C3 Super Mini 
+  const uint8_t PINS[LED_COUNT] = { 4, 5, 6, 10 };
+#elif defined(ESP32)
+  // my ESP32 Minikit 
+  const uint8_t PINS[LED_COUNT] = { 22, 21, 17, 16 };
+#elif defined(ESP8266)
+  // Mini Board
+  const uint8_t PINS[LED_COUNT] = { 4, 2, 12, 14 };
+#endif
+
+const uint8_t CHAN[LED_COUNT] = { 1, 2, 3, 4 };
 
 #define PWM_FREQ 25000
 
@@ -88,12 +98,11 @@ void setup_app() {
 }
 
 const char *get_slider( int led ) {
-    slider[sizeof(slider)-1] = '0' + led;  // up to 10 sliders
+    slider[sizeof(slider)-2] = '0' + led;  // up to 10 sliders
     return slider;
 }
 
 bool handle_app() {
-
     for( int i = LED_START; i < LED_COUNT; i++ ) {
         led_t led = static_cast<led_t>(i);
         if( duty_dirty[led] && millis() - duty_dirty[led] > 1000 ) {
@@ -126,6 +135,14 @@ bool app_status( bool status ) {
         }
     }
     return isOn;
+}
+
+uint8_t get_pin( led_t led ) {
+    return PINS[led];
+}
+
+int get_value( led_t led ) {
+    return duty_value[led];
 }
 
 int get_duty( led_t led ) {

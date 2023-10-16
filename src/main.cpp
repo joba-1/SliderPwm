@@ -11,6 +11,9 @@ TODO
 #include <Arduino.h>
 
 #include <app.h>
+#include <FileSys.h>
+
+#include <WiFiManager.h>
 
 // Config for ESP8266 or ESP32
 #if defined(ESP8266)
@@ -20,8 +23,10 @@ TODO
     #define BUTTON_PIN 0
 
     // Web Updater
-    #include <ESP8266HTTPUpdateServer.h>
-    #include <ESP8266WebServer.h>
+    #define WEBSERVER_H
+    #include <ESPAsyncWebServer.h>
+    // #include <ESP8266HTTPUpdateServer.h>
+    // #include <ESP8266WebServer.h>
     #include <ESP8266WiFi.h>
     #include <ESP8266mDNS.h>
     #include <WiFiClient.h>
@@ -36,6 +41,31 @@ TODO
     #include <WiFiUdp.h>
     WiFiUDP ntpUDP;
     NTPClient ntp(ntpUDP, NTP_SERVER);
+
+    const char *hostname() { return WiFi.hostname().c_str(); }
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    #define HEALTH_LED_INVERTED true
+    #define HEALTH_LED_PIN 8
+    #define HEALTH_LED_CHANNEL 0
+    #define BUTTON_PIN 9
+
+    // Web Updater
+    #include <ESPAsyncWebServer.h>
+    #include <WiFi.h>
+    #include <ESPmDNS.h>
+    #include <WiFiClient.h>
+    #include <SPIFFS.h>
+
+    // Post to InfluxDB
+    #include <HTTPClient.h>
+    
+    // Time sync
+    #include <time.h>
+
+    // Reset reason
+    #include "rom/rtc.h"
+
+    const char *hostname() { return WiFi.getHostname(); }
 #elif defined(ESP32)
     #define HEALTH_LED_INVERTED false
     #ifdef LED_BUILTIN
@@ -60,6 +90,8 @@ TODO
 
     // Reset reason
     #include "rom/rtc.h"
+
+    const char *hostname() { return WiFi.getHostname(); }
 #else
     #error "No ESP8266 or ESP32, define your pins and includes here!"
 #endif
@@ -73,7 +105,6 @@ bool enabledBreathing = true;  // global flag to switch breathing animation on o
 
 // Infrastructure
 #include <Syslog.h>
-#include <WiFiManager.h>
 #include <FileSys.h>
 
 FileSys fileSys;
@@ -166,7 +197,7 @@ bool json_Wifi(char *json, size_t maxlen, const char *bssid, int8_t rssi) {
         "\"IP\":\"%s\","
         "\"RSSI\":%d}}";
 
-    int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), bssid, WiFi.localIP().toString().c_str(), rssi);
+    int len = snprintf(json, maxlen, jsonFmt, hostname(), bssid, WiFi.localIP().toString().c_str(), rssi);
 
     return len < maxlen;
 }
@@ -180,7 +211,7 @@ bool json_Pwm(char *json, size_t maxlen, bool on) {
         "\"Power\":%d}}";
     
 
-    int len = snprintf(json, maxlen, jsonFmt, WiFi.getHostname(), get_duties(), get_power() ? 1 : 0);
+    int len = snprintf(json, maxlen, jsonFmt, hostname(), get_duties(), get_power() ? 1 : 0);
 
     return len < maxlen;
 }
@@ -222,7 +253,7 @@ void report_pwm( bool on ) {
         slog(msg);
         publish(MQTT_TOPIC "/json/Pwm", msg);
 
-        snprintf(msg, sizeof(msg), lineFmt, WiFi.getHostname(), 
+        snprintf(msg, sizeof(msg), lineFmt, hostname(), 
             get_duty(LED_R), get_duty(LED_G), get_duty(LED_B), get_duty(LED_W), on);
         postInflux(msg);
 
@@ -266,7 +297,7 @@ void report_wifi( int8_t rssi, const byte *bssid ) {
         slog(msg);
         publish(MQTT_TOPIC "/json/Wifi", msg);
 
-        snprintf(msg, sizeof(msg), lineFmt, WiFi.getHostname(), lastBssid, WiFi.localIP().toString().c_str(), lastRssi);
+        snprintf(msg, sizeof(msg), lineFmt, hostname(), lastBssid, WiFi.localIP().toString().c_str(), lastRssi);
         postInflux(msg);
 
         reportedRssi = lastRssi;
@@ -355,6 +386,14 @@ const char *main_page() {
         "    </div>\n"
         "    <div class=\"row my-4\">\n"
         "     <div class=\"col-10\">\n"
+        "      <input style=\"width:100%%\" id=\"slider0\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
+        "     </div>\n"
+        "     <div class=\"col-2\">\n"
+        "      <div class=\"float-end\" id=\"sliderValue0\">%d</div>\n"
+        "     </div>\n"
+        "    </div>\n"
+        "    <div class=\"row my-4\">\n"
+        "     <div class=\"col-10\">\n"
         "      <input style=\"width:100%%\" id=\"slider1\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
         "     </div>\n"
         "     <div class=\"col-2\">\n"
@@ -375,14 +414,6 @@ const char *main_page() {
         "     </div>\n"
         "     <div class=\"col-2\">\n"
         "      <div class=\"float-end\" id=\"sliderValue3\">%d</div>\n"
-        "     </div>\n"
-        "    </div>\n"
-        "    <div class=\"row my-4\">\n"
-        "     <div class=\"col-10\">\n"
-        "      <input style=\"width:100%%\" id=\"slider4\" type=\"range\" min=\"0\" max=\"1000\" step=\"1\" value=\"%d\">\n"
-        "     </div>\n"
-        "     <div class=\"col-2\">\n"
-        "      <div class=\"float-end\" id=\"sliderValue4\">%d</div>\n"
         "     </div>\n"
         "    </div>\n"
         "    <div class=\"row my-4\">\n"
@@ -466,10 +497,10 @@ const char *main_page() {
         "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
         "  <script src=\"slider.js\"></script>\n"
         "  <script>\n"
-        "   sliderCallback('slider1', 'sliderValue1', '/change1');\n"
-        "   sliderCallback('slider2', 'sliderValue2', '/change2');\n"
-        "   sliderCallback('slider3', 'sliderValue3', '/change3');\n"
-        "   sliderCallback('slider4', 'sliderValue4', '/change4');\n"
+        "   sliderCallback('slider0', 'sliderValue0', '/change');\n"
+        "   sliderCallback('slider1', 'sliderValue1', '/change');\n"
+        "   sliderCallback('slider2', 'sliderValue2', '/change');\n"
+        "   sliderCallback('slider3', 'sliderValue3', '/change');\n"
         "  </script>\n"
         " </body>\n"
         "</html>\n";
@@ -483,22 +514,33 @@ const char *main_page() {
         snprintf(web_msg, sizeof(web_msg), "WARNING: %s",
             (influx_status < 200 || influx_status >= 300) ? "Database" : "");
     }
-    snprintf(page, sizeof(page), fmt, get_duty(LED_R), get_duty(LED_R), 
-        get_duty(LED_G), get_duty(LED_G), get_duty(LED_B), get_duty(LED_B), 
-        get_duty(LED_W), get_duty(LED_W), start_time, curr_time, 
+    snprintf(page, sizeof(page), fmt, get_value(LED_R), get_value(LED_R), 
+        get_value(LED_G), get_value(LED_G), get_value(LED_B), get_value(LED_B), 
+        get_value(LED_W), get_value(LED_W), start_time, curr_time, 
         influx_time, influx_status, lastBssid, lastRssi, web_msg);
     *web_msg = '\0';
     return page;
 }
 
-
 // Define web pages for update, reset or for event infos
 void setup_webserver() {
     // css and js files
-    web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css").setCacheControl("max-age=600");
-    web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js").setCacheControl("max-age=600");
-    web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js").setCacheControl("max-age=600");
-    web_server.serveStatic("/slider.js", fileSys, "/slider.js").setCacheControl("max-age=600");
+    // web_server.serveStatic("/bootstrap.min.css", fileSys, "/bootstrap.min.css").setCacheControl("max-age=600");
+    web_server.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/bootstrap.min.css", "text/css");
+    });
+    // web_server.serveStatic("/bootstrap.bundle.min.js", fileSys, "/bootstrap.bundle.min.js").setCacheControl("max-age=600");
+    web_server.on("/bootstrap.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
+       request->send(SPIFFS, "/bootstrap.bundle.min.js", "application/javascript");
+    });
+    // web_server.serveStatic("/jquery.min.js", fileSys, "/jquery.min.js").setCacheControl("max-age=600");
+    web_server.on("/jquery.min.js", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/jquery.min.js", "application/javascript");
+    });
+    // web_server.serveStatic("/slider.js", fileSys, "/slider.js").setCacheControl("max-age=600");
+    web_server.on("/slider.js", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/slider.js", "application/javascript");
+    });
 
     // change slider value
     web_server.on("/change", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -507,7 +549,6 @@ void setup_webserver() {
         String arg = request->arg("button");
         if (!arg.isEmpty()) {
             if (arg.equals("button-1")) {
-                ;
                 snprintf(web_msg, sizeof(web_msg), "Button '%s' pressed: %s", arg.c_str(), app_status(true) ? "ON" : "OFF");
                 slog(web_msg, prio);
             }
@@ -518,11 +559,15 @@ void setup_webserver() {
                 led_t led = static_cast<led_t>(i);
                 arg = request->arg(get_slider(i));
                 if (!arg.isEmpty()) {
-                    app_value(led, arg.toInt());
-                    // snprintf(web_msg, sizeof(web_msg), "Slider 1 value now '%d'", get_duty());
+                    int value = arg.toInt();
+                    app_value(led, value);
+                    // TODO: comment this message for speed
+                    // snprintf(web_msg, sizeof(web_msg), "Slider %d value now %d. Duty is %d", i, value, get_duty(led));
                     // slog(web_msg, prio);
                 }
-                request->send(204, "text/html", "");  // much smoother slider experience than redirect()
+            snprintf(web_msg, sizeof(web_msg), "change: heap %d", ESP.getFreeHeap());
+            slog(web_msg);
+            request->send(204, "text/html", "");  // much smoother slider experience than redirect()
             }
         }
     });
@@ -627,14 +672,18 @@ void setup_webserver() {
             Serial.printf("Update Start: %s\n", filename.c_str());
             if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)){
                 Update.printError(Serial);
+                #ifdef ESP32
                 snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+                #endif
                 request->redirect("/");  
             }
         }
         if(!Update.hasError()){
             if(Update.write(data, len) != len){
                 Update.printError(Serial);
+                #ifdef ESP32
                 snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+                #endif
                 request->redirect("/");  
             }
         }
@@ -644,7 +693,9 @@ void setup_webserver() {
                 snprintf(web_msg, sizeof(web_msg), "Update Success: %u Bytes", index+len);
             } else {
                 Update.printError(Serial);
+                #ifdef ESP32
                 snprintf(web_msg, sizeof(web_msg), "%s", Update.errorString());
+                #endif
             }
             request->redirect("/"); 
         }
@@ -723,12 +774,17 @@ bool check_ntptime() {
 // Reset reason can be quite useful...
 // Messages from arduino core example
 void print_reset_reason(int core) {
+#ifdef ESP32
   switch (rtc_get_reset_reason(core)) {
     case 1  : slog("Vbat power on reset");break;
     case 3  : slog("Software reset digital core");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 4  : slog("Legacy watch dog reset digital core");break;
+    #endif
     case 5  : slog("Deep Sleep reset digital core");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 6  : slog("Reset by SLC module, reset digital core");break;
+    #endif
     case 7  : slog("Timer Group0 Watch dog reset digital core");break;
     case 8  : slog("Timer Group1 Watch dog reset digital core");break;
     case 9  : slog("RTC Watch dog Reset digital core");break;
@@ -736,11 +792,14 @@ void print_reset_reason(int core) {
     case 11 : slog("Time Group reset CPU");break;
     case 12 : slog("Software reset CPU");break;
     case 13 : slog("RTC Watch dog Reset CPU");break;
+    #ifndef CONFIG_IDF_TARGET_ESP32C3
     case 14 : slog("for APP CPU, reseted by PRO CPU");break;
+    #endif
     case 15 : slog("Reset when the vdd voltage is not stable");break;
     case 16 : slog("RTC Watch dog reset digital core and rtc module");break;
     default : slog("Reset reason unknown");
   }
+#endif
 }
 
 
@@ -851,6 +910,13 @@ void setup() {
     Serial.begin(BAUDRATE);
     Serial.println("\nStarting " PROGNAME " v" VERSION " " __DATE__ " " __TIME__);
 
+    Serial.print("Pins for RGBW are");
+    for( int i = LED_START; i < LED_COUNT; i++ ) {
+        led_t led = static_cast<led_t>(i);
+        Serial.printf(" %u", get_pin(led));
+    }
+    Serial.println();
+
     String host(HOSTNAME);
     host.toLowerCase();
     WiFi.hostname(host.c_str());
@@ -858,7 +924,7 @@ void setup() {
 
     // Syslog setup
     syslog.server(SYSLOG_SERVER, SYSLOG_PORT);
-    syslog.deviceHostname(WiFi.getHostname());
+    syslog.deviceHostname(hostname());
     syslog.appName("Joba1");
     syslog.defaultPriority(LOG_KERN);
 
@@ -866,7 +932,7 @@ void setup() {
 
     WiFiManager wm;
     wm.setConfigPortalTimeout(180);
-    if (!wm.autoConnect(WiFi.getHostname(), WiFi.getHostname())) {
+    if (!wm.autoConnect(hostname(), hostname())) {
         Serial.println("Failed to connect WLAN, about to reset");
         for (int i = 0; i < 20; i++) {
             digitalWrite(HEALTH_LED_PIN, (i & 1) ? HIGH : LOW);
@@ -890,7 +956,7 @@ void setup() {
         configTime(3600, 3600, NTP_SERVER);  // MEZ/MESZ
     #endif
 
-    MDNS.begin(WiFi.getHostname());
+    MDNS.begin(hostname());
 
     fileSys.begin();
 

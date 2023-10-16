@@ -20,7 +20,7 @@ When connecting the USB port while ESP32-VDD was connected with Mini360-VO as de
 ### Prerequisite
 
 * PlatformIO (e.g. as VS Code extension or standalone)
-* ESP32 (or maybe ESP8266)
+* ESP32, ESP-C3 (or maybe ESP8266)
 
 ### Usage
 
