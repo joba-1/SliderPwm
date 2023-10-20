@@ -4,7 +4,7 @@
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
   // my ESP32-C3 Super Mini 
-  const uint8_t PINS[LED_COUNT] = { 4, 5, 6, 10 };
+  const uint8_t PINS[LED_COUNT] = { 4, 5, 6, 7 };
 #elif defined(ESP32)
   // my ESP32 Minikit 
   const uint8_t PINS[LED_COUNT] = { 22, 21, 17, 16 };

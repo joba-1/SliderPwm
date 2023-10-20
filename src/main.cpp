@@ -497,10 +497,10 @@ const char *main_page() {
         "  <script src=\"bootstrap.bundle.min.js\"></script>\n"
         "  <script src=\"slider.js\"></script>\n"
         "  <script>\n"
-        "   sliderCallback('slider0', 'sliderValue0', '/change');\n"
-        "   sliderCallback('slider1', 'sliderValue1', '/change');\n"
-        "   sliderCallback('slider2', 'sliderValue2', '/change');\n"
-        "   sliderCallback('slider3', 'sliderValue3', '/change');\n"
+        "   sliderCallback('slider0', 'sliderValue0', '/r');\n"
+        "   sliderCallback('slider1', 'sliderValue1', '/g');\n"
+        "   sliderCallback('slider2', 'sliderValue2', '/b');\n"
+        "   sliderCallback('slider3', 'sliderValue3', '/w');\n"
         "  </script>\n"
         " </body>\n"
         "</html>\n";
@@ -565,11 +565,67 @@ void setup_webserver() {
                     // snprintf(web_msg, sizeof(web_msg), "Slider %d value now %d. Duty is %d", i, value, get_duty(led));
                     // slog(web_msg, prio);
                 }
-            snprintf(web_msg, sizeof(web_msg), "change: heap %d", ESP.getFreeHeap());
-            slog(web_msg);
-            request->send(204, "text/html", "");  // much smoother slider experience than redirect()
             }
+            // snprintf(web_msg, sizeof(web_msg), "change: heap %d", ESP.getFreeHeap());
+            // slog(web_msg);
+            request->send(204, "text/html", "");  // much smoother slider experience than redirect()
         }
+    });
+
+    // change red slider value
+    web_server.on("/r", HTTP_POST, [](AsyncWebServerRequest *request) {
+        led_t led = LED_R;
+        String arg = request->arg(get_slider(led));
+        if (!arg.isEmpty()) {
+            int value = arg.toInt();
+            app_value(led, value);
+            // TODO: comment this message for speed
+            // snprintf(web_msg, sizeof(web_msg), "Slider r value now %d. Duty is %d", value, get_duty(led));
+            // slog(web_msg, LOG_INFO);
+        }
+        request->send(204, "text/html", "");  // much smoother slider experience than redirect()
+    });
+
+    // change green slider value
+    web_server.on("/g", HTTP_POST, [](AsyncWebServerRequest *request) {
+        led_t led = LED_G;
+        String arg = request->arg(get_slider(led));
+        if (!arg.isEmpty()) {
+            int value = arg.toInt();
+            app_value(led, value);
+            // TODO: comment this message for speed
+            // snprintf(web_msg, sizeof(web_msg), "Slider g value now %d. Duty is %d", value, get_duty(led));
+            // slog(web_msg, LOG_INFO);
+        }
+        request->send(204, "text/html", "");  // much smoother slider experience than redirect()
+    });
+
+    // change blue slider value
+    web_server.on("/b", HTTP_POST, [](AsyncWebServerRequest *request) {
+        led_t led = LED_B;
+        String arg = request->arg(get_slider(led));
+        if (!arg.isEmpty()) {
+            int value = arg.toInt();
+            app_value(led, value);
+            // TODO: comment this message for speed
+            // snprintf(web_msg, sizeof(web_msg), "Slider b value now %d. Duty is %d", value, get_duty(led));
+            // slog(web_msg, LOG_INFO);
+        }
+        request->send(204, "text/html", "");  // much smoother slider experience than redirect()
+    });
+
+    // change white slider value
+    web_server.on("/w", HTTP_POST, [](AsyncWebServerRequest *request) {
+        led_t led = LED_W;
+        String arg = request->arg(get_slider(led));
+        if (!arg.isEmpty()) {
+            int value = arg.toInt();
+            app_value(led, value);
+            // TODO: comment this message for speed
+            // snprintf(web_msg, sizeof(web_msg), "Slider w value now %d. Duty is %d", value, get_duty(led));
+            // slog(web_msg, LOG_INFO);
+        }
+        request->send(204, "text/html", "");  // much smoother slider experience than redirect()
     });
 
     web_server.on("/json/Wifi", [](AsyncWebServerRequest *request) {
@@ -806,36 +862,51 @@ void print_reset_reason(int core) {
 // Called on incoming mqtt messages
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 
-    typedef struct cmd { const char *name; void (*action)(void); } cmd_t;
+    typedef struct cmd { const char *name; void (*action)(char *args); } cmd_t;
     
     static cmd_t cmds[] = { 
-        { "toggle", [](){ app_status(true); } },
-        { "on", [](){ if (!get_power()) app_status(true); } },
-        { "off", [](){ if (get_power()) app_status(true); } }
+        { "color",  []( char *args ){
+            char *end;
+            int r = (int)strtol(args, &end, 0);
+            if( args != end && r >= 0 && r <= 1000 ) {
+                args = end;
+                int g = (int)strtol(args, &end, 0);
+                if( args != end && g >= 0 && g <= 1000 ) {
+                    args = end;
+                    int b = (int)strtol(args, &end, 0);
+                    if( args != end && b >= 0 && b <= 1000 ) {
+                        args = end;
+                        int w = (int)strtol(args, &end, 0);
+                        if( args != end && w >= 0 && w <= 1000 ) {
+                            app_value(LED_R, r); 
+                            app_value(LED_G, g); 
+                            app_value(LED_B, b); 
+                            app_value(LED_W, w); 
+                        }
+                    }
+                }
+            } } },
+        { "red",    []( char *args ){ app_value(LED_R, max(min(atoi(args), 1000), 0)); } },
+        { "green",  []( char *args ){ app_value(LED_G, max(min(atoi(args), 1000), 0)); } },
+        { "blue",   []( char *args ){ app_value(LED_B, max(min(atoi(args), 1000), 0)); } },
+        { "white",  []( char *args ){ app_value(LED_W, max(min(atoi(args), 1000), 0)); } },
+        { "toggle", []( char *args ){ app_status(true); } },
+        { "on",     []( char *args ){ if (!get_power()) app_status(true); } },
+        { "off",    []( char *args ){ if (get_power()) app_status(true); } }
     };
 
-    char *data = (char *)payload;
+    if( length > 0 ) {
+        String data(payload, length);
 
-    if (length > 5 && length < 10 && strncasecmp("duty ", data, 5) == 0) {
-        char num[5] = {0};
-        char *end;
-        strncpy(num, &data[5], sizeof(num)-1);
-        int value = (int)strtol(&data[5], &end, 0);
-        if (end != &data[5]) {
-            snprintf(msg, sizeof(msg), "Execute mqtt command 'duty %d'", value);
-            slog(msg, LOG_INFO);
-            app_value(LED_W, value);  // for now only white channel
-            return;
-        }
-    }
-
-    if (strcasecmp(MQTT_TOPIC "/cmd", topic) == 0) {
-        for (auto &cmd: cmds) {
-            if (strncasecmp(cmd.name, (char *)payload, length) == 0) {
-                snprintf(msg, sizeof(msg), "Execute mqtt command '%s'", cmd.name);
-                slog(msg, LOG_INFO);
-                (*cmd.action)();
-                return;
+        if (strcasecmp(MQTT_TOPIC "/cmd", topic) == 0) {
+            for (auto &cmd: cmds) {
+                size_t len = strlen(cmd.name);
+                if (length >= len && strncasecmp(cmd.name, data.c_str(), len) == 0) {
+                    snprintf(msg, sizeof(msg), "Execute mqtt command '%s' with '%.*s'", cmd.name, length-len, &data[len]);
+                    slog(msg, LOG_INFO);
+                    (*cmd.action)(&data[len]);
+                    return;
+                }
             }
         }
     }
@@ -907,7 +978,18 @@ void setup() {
     pinMode(HEALTH_LED_PIN, OUTPUT);
     digitalWrite(HEALTH_LED_PIN, HEALTH_LED_INVERTED ? LOW : HIGH);
 
+    pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
+
     Serial.begin(BAUDRATE);
+    // uint32_t prev = 0;
+    // while( digitalRead(BUTTON_PIN) != LOW ) {
+    //     uint32_t now = millis();
+    //     if( now - prev > 1000 ) {
+    //         Serial.printf("waiting %d\n", now);
+    //         prev = now;
+    //     }
+    // }
+
     Serial.println("\nStarting " PROGNAME " v" VERSION " " __DATE__ " " __TIME__);
 
     Serial.print("Pins for RGBW are");
@@ -969,8 +1051,6 @@ void setup() {
     print_reset_reason(0);
     print_reset_reason(1);
 #endif
-
-    pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
 
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
