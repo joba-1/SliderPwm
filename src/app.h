@@ -2,7 +2,7 @@
 
 typedef enum { LED_START, LED_R = LED_START, LED_G, LED_B, LED_W, LED_COUNT } led_t;
 
-void setup_app();
+void setup_app( bool detach = false );
 bool handle_app();
 
 bool app_status( bool onOff );

@@ -16,8 +16,7 @@ Breathing::Breathing(uint32_t interval_ms, uint8_t pwm_pin, bool inverted, uint8
 
 void Breathing::begin() {
     #if defined(ESP32)
-        ledcAttachPin(_pwm_pin, _pwm_channel);
-        ledcSetup(_pwm_channel, PWM_FREQ, PWMBITS);
+        ledcAttach(_pwm_pin, PWM_FREQ, PWMBITS);
     #else
         analogWriteRange(PWMRANGE);
         pinMode(_pwm_pin, OUTPUT);

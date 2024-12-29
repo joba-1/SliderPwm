@@ -3,8 +3,11 @@
 #include <app.h>
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
-  // my ESP32-C3 Super Mini 
+  // my ESP32-C3 Super Mini
   const uint8_t PINS[LED_COUNT] = { 4, 5, 6, 7 };
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+    #include <esp32-hal-rgb-led.h>
+    const uint8_t pin = 48;  // WS2812 
 #elif defined(ESP32)
   // my ESP32 Minikit 
   const uint8_t PINS[LED_COUNT] = { 22, 21, 17, 16 };
@@ -13,7 +16,7 @@
   const uint8_t PINS[LED_COUNT] = { 4, 2, 12, 14 };
 #endif
 
-const uint8_t CHAN[LED_COUNT] = { 1, 2, 3, 4 };
+// Arduino 2 api: const uint8_t CHAN[LED_COUNT] = { 1, 2, 3, 4 };
 
 #define PWM_FREQ 25000
 
@@ -38,18 +41,32 @@ static char slider[] = "sliderX";
 
 
 static uint32_t value2duty( int value ) {
-    // 0=0, 1=1, then duty ~ value^2 with duty=PWMRANGE for value=1000
-    const int min_value = sqrt(PWMRANGE);
-    if (value > 0) value += min_value;
-    uint32_t new_duty = (PWMRANGE * value) / (1000 + min_value);
-    new_duty *= new_duty;   // smaller duty has smaller steps...
-    new_duty /= PWMRANGE;   // ...by quadratic function
-    return new_duty;
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        return map(value, 0, 1000, 0, 255);  // RGB
+    #else
+        // 0=0, 1=1, then duty ~ value^2 with duty=PWMRANGE for value=1000
+        const int min_value = sqrt(PWMRANGE);
+        if (value > 0) value += min_value;
+        uint32_t new_duty = (PWMRANGE * value) / (1000 + min_value);
+        new_duty *= new_duty;   // smaller duty has smaller steps...
+        new_duty /= PWMRANGE;   // ...by quadratic function
+        return new_duty;
+    #endif
 }
 
 static void set_duty( led_t led, uint32_t new_duty ) {
-    #if defined(ESP32)
-        ledcWrite(CHAN[led], new_duty);
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        if (isOn) {
+            int r = map(duty[LED_R], 0, UINT8_MAX, 0, duty[LED_W]);
+            int g = map(duty[LED_G], 0, UINT8_MAX, 0, duty[LED_W]);
+            int b = map(duty[LED_B], 0, UINT8_MAX, 0, duty[LED_W]);
+            rgbLedWrite(pin, r, g, b);
+        }
+        else {
+            rgbLedWrite(pin, 0, 0, 0);
+        }
+    #elif defined(ESP32)
+        ledcWrite(PINS[led], new_duty);
     #else
         analogWrite(PINS[led], new_duty);
     #endif
@@ -70,7 +87,7 @@ void app_value( led_t led, int value ) {
     }
 }
 
-void setup_app() {
+void setup_app( bool detach ) {
     prefs.begin(PROGNAME, false);
     isOn = prefs.getBool("on", true);
     int value[LED_COUNT];
@@ -83,9 +100,11 @@ void setup_app() {
     #if defined(ESP32)
         for( int i = LED_START; i < LED_COUNT; i++ ) {
             led_t led = static_cast<led_t>(i);
-            ledcSetup(CHAN[led], PWM_FREQ, PWMBITS);
             app_value(led, value[led]);
-            ledcAttachPin(PINS[led], CHAN[led]);
+            #if !defined(CONFIG_IDF_TARGET_ESP32S3)
+                if (detach) ledcDetach(PINS[led]);
+                ledcAttach(PINS[led], PWM_FREQ, PWMBITS);
+            #endif
         }
     #else
         analogWriteRange(PWMRANGE);
@@ -138,7 +157,11 @@ bool app_status( bool status ) {
 }
 
 uint8_t get_pin( led_t led ) {
-    return PINS[led];
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        return pin;
+    #else
+        return PINS[led];
+    #endif
 }
 
 int get_value( led_t led ) {
@@ -155,7 +178,7 @@ const char *get_duties() {
     bool sep = false;
     for( int i = LED_START; i < LED_COUNT; i++ ) {
         led_t led = static_cast<led_t>(i);
-        int n = snprintf(str, sizeof(duties) - (str - duties) - 1, "%s%d", sep ? "," : "", duty[led]);
+        int n = snprintf(str, sizeof(duties) - (str - duties) - 1, "%s%d", sep ? "," : "", (int)duty[led]);
         str += n;
         sep = true;
     }

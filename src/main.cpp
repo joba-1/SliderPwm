@@ -43,11 +43,16 @@ TODO
     NTPClient ntp(ntpUDP, NTP_SERVER);
 
     const char *hostname() { return WiFi.hostname().c_str(); }
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+#elif defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3)
     #define HEALTH_LED_INVERTED true
-    #define HEALTH_LED_PIN 8
     #define HEALTH_LED_CHANNEL 0
-    #define BUTTON_PIN 9
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        #define HEALTH_LED_PIN -1
+        #define BUTTON_PIN 0
+    #else
+        #define HEALTH_LED_PIN 8
+        #define BUTTON_PIN 9
+    #endif
 
     // Web Updater
     #include <ESPAsyncWebServer.h>
@@ -834,11 +839,11 @@ void print_reset_reason(int core) {
   switch (rtc_get_reset_reason(core)) {
     case 1  : slog("Vbat power on reset");break;
     case 3  : slog("Software reset digital core");break;
-    #ifndef CONFIG_IDF_TARGET_ESP32C3
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32C3) 
     case 4  : slog("Legacy watch dog reset digital core");break;
     #endif
     case 5  : slog("Deep Sleep reset digital core");break;
-    #ifndef CONFIG_IDF_TARGET_ESP32C3
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32C3) 
     case 6  : slog("Reset by SLC module, reset digital core");break;
     #endif
     case 7  : slog("Timer Group0 Watch dog reset digital core");break;
@@ -848,7 +853,7 @@ void print_reset_reason(int core) {
     case 11 : slog("Time Group reset CPU");break;
     case 12 : slog("Software reset CPU");break;
     case 13 : slog("RTC Watch dog Reset CPU");break;
-    #ifndef CONFIG_IDF_TARGET_ESP32C3
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32C3) 
     case 14 : slog("for APP CPU, reseted by PRO CPU");break;
     #endif
     case 15 : slog("Reset when the vdd voltage is not stable");break;
@@ -981,6 +986,9 @@ void setup() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);  // to toggle load status
 
     Serial.begin(BAUDRATE);
+    // #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    //     while(!Serial);
+    // #endif
     // uint32_t prev = 0;
     // while( digitalRead(BUTTON_PIN) != LOW ) {
     //     uint32_t now = millis();
@@ -1055,7 +1063,7 @@ void setup() {
     health_led.limits(1, health_led.range() / 2);  // only barely off to 50% brightness
     health_led.begin();
 
-    setup_app();  // TODO done twice since sometimes light stays off until toggled twice
+    setup_app(true);  // TODO done twice since sometimes light stays off until toggled twice
 
     slog("Setup done", LOG_NOTICE);
 }
