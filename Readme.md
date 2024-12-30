@@ -1,7 +1,7 @@
 # Slider PWM
 
-Use html range slider callbacks to control pwm duty cycle. 
-The duty cycle (led brightnes) already changes while dragging the slider, not only after releasing the slider. 
+Use html range slider callbacks to control one or more pwm duty cycles (or WS2812 color). 
+The duty cycle (led brightnes) or RGB color already changes while dragging the slider, not only after releasing the slider. 
 
 ![image](https://user-images.githubusercontent.com/32450554/218337707-5bb61d95-975d-4ba3-b0eb-d9acf8543b60.png)
 
@@ -20,13 +20,15 @@ When connecting the USB port while ESP32-VDD was connected with Mini360-VO as de
 ### Prerequisite
 
 * PlatformIO (e.g. as VS Code extension or standalone)
-* ESP32, ESP-C3 (or maybe ESP8266)
+* ESP32, ESP32-C3, ESP32-S3 (or maybe ESP8266)
 
 ### Usage
 
 * Edit platformio.ini: 
     * change upload and monitor ports to where the ESP is plugged in
     * change default env to what matches your ESP best
+    * change instance number 1 to something else if you want to use multiple devices
+      
 * Start build and upload
   ```
   pio run --target buildfs
@@ -45,5 +47,5 @@ When connecting the USB port while ESP32-VDD was connected with Mini360-VO as de
 * Uses Bootstrap (5.2.3) for flexible layout (served as local files. Size: ~60k)
 * Uses JQuery (3.6.1) for post request on slider release (Size: ~30k)
 * Uses base64 encoded favicon converted by https://www.base64-image.de/ (Size: ~300 bytes)
-* Uses Preferences lib to store current duty cycle on changes
+* Uses Preferences lib to store current duty cycles or color on changes
 * Optional: the ESP will contact ntp, syslog, mqtt broker and influx db as a demo. See platformio.ini for configuration.
